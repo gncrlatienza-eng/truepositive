@@ -1,0 +1,70 @@
+# ==============================
+# Environment variables & secrets
+# ==============================
+# All .env files are ignored, no exceptions — including .env.example.
+# Required variables are documented in README.md instead of a committed template.
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+credentials.json
+
+# ==============================
+# Claude workspace (not committed)
+# ==============================
+.claude/
+claude.md
+
+# ==============================
+# Local-only planning/reference material (not for the public repo)
+# ==============================
+reference/
+
+# ==============================
+# Dependencies
+# ==============================
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ==============================
+# Build artifacts
+# ==============================
+dist/
+build/
+*.egg-info/
+.next/
+out/
+
+# ==============================
+# IDE files
+# ==============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==============================
+# OS files
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Logs & temp files
+# ==============================
+*.log
+logs/
+tmp/
+*.tmp
+
+# ==============================
+# Docker overrides
+# ==============================
+docker-compose.override.yml
+.docker/*

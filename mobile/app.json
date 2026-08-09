@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "TruePositive",
+    "slug": "truepositive-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark"
+  }
+}
