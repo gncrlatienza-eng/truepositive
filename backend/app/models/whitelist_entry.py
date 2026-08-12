@@ -9,7 +9,7 @@ from app.database.session import Base
 from app.models.common import pg_enum
 
 
-class WhitelistType(str, enum.Enum):
+class WhitelistType(enum.StrEnum):
     IP = "ip"
     DOMAIN = "domain"
     HASH = "hash"

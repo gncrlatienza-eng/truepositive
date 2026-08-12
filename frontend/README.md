@@ -7,6 +7,7 @@ React + Vite web dashboard.
 **Via Docker:** handled by the root `docker-compose.yml`.
 
 **Standalone:**
+
 ```bash
 npm install
 npm run dev       # http://localhost:3000
@@ -14,6 +15,18 @@ npm run build     # production bundle to dist/
 ```
 
 Set `VITE_API_URL` in a `.env` file (see the root [README's Environment Variables section](../README.md#environment-variables)) to point at the backend. No `.env.example` is committed — create `.env` yourself.
+
+## Code Quality
+
+Enforced in CI (see root [README's Code Quality Standards](../README.md#code-quality-standards)). Config: `eslint.config.js` (flat config — `eslint-plugin-react` + `eslint-plugin-react-hooks`) and `.prettierrc.json`.
+
+```bash
+npm run lint            # eslint .
+npm run format:check    # prettier --check .
+npm run format           # prettier --write . (auto-fix)
+```
+
+No test runner is set up on the frontend yet — that's open follow-up work, not currently in CI.
 
 ## Folder Layout
 

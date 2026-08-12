@@ -50,20 +50,20 @@ Ship a working SIEM MVP: an analyst can sign up, deploy an agent, select log sou
 **Goal:** A new user can sign up, create a workspace, and land in the app shell.
 
 **Backend**
-- [ ] `POST /auth/signup`, `POST /auth/login` — JWT issuance, bcrypt password hashing.
-- [ ] Org/workspace creation tied to signup (workspace slug validation: lowercase/numbers/hyphens).
-- [ ] RBAC roles on the user model: Admin, Lead, Analyst, Read-Only.
+- [x] `POST /auth/signup`, `POST /auth/login` — JWT issuance, bcrypt password hashing. (`bcrypt` used directly rather than via passlib — passlib 1.7.4's bcrypt backend detection breaks under bcrypt ≥4.1; see `backend/app/utils/security.py`.)
+- [x] Org/workspace creation tied to signup (workspace slug validation: lowercase/numbers/hyphens).
+- [x] RBAC roles on the user model: Admin, Lead, Analyst, Read-Only. (Signup assigns the first user `ADMIN`; role-gated permissions land when a feature actually needs them.)
 
 **Frontend**
-- [ ] Landing page (`isLanding`): hero, 4-step value prop list, "Create account" / "Log in" CTAs, social-proof strip.
-- [ ] Login page (`isLogin`): email/password, "keep me signed in," SSO button (non-functional placeholder), forgot-password link.
-- [ ] Onboarding Step 1 (`ob1`): account + org form (name, email, password w/ strength meter, org name, team size, workspace slug), terms checkbox.
-- [ ] Onboarding Step 2 (`ob2`): agent platform picker (Windows/Linux/Docker/Kubernetes), enrollment credentials display (Agent ID + reveal-able key), install command block, "waiting for heartbeat" / "agent connected" states.
-- [ ] Onboarding Step 3 (`ob3`): local vs. remote collection mode toggle, remote connection form (protocol/host/port/user/auth), log source checklist with volume + tag badges.
+- [x] Landing page (`isLanding`): hero, 4-step value prop list, "Create account" / "Log in" CTAs, social-proof strip.
+- [x] Login page (`isLogin`): email/password, "keep me signed in," SSO button (non-functional placeholder), forgot-password link.
+- [x] Onboarding Step 1 (`ob1`): account + org form (name, email, password w/ strength meter, org name, team size, workspace slug), terms checkbox. Calls real `POST /auth/signup`.
+- [x] Onboarding Step 2 (`ob2`): agent platform picker (Windows/Linux/Docker/Kubernetes), enrollment credentials display (Agent ID + reveal-able key), install command block, "waiting for heartbeat" / "agent connected" states. Simulated client-side per this sprint's AC below — real issuance/heartbeat is Sprint 3.
+- [x] Onboarding Step 3 (`ob3`): local vs. remote collection mode toggle, remote connection form (protocol/host/port/user/auth), log source checklist with volume + tag badges. UI-only; real `log_sources` persistence is Sprint 3.
 
 **Acceptance Criteria**
-- Full signup → onboarding step 1–3 → app shell flow works with real backend calls (agent connection can be simulated/stubbed since Sprint 3 builds the real heartbeat).
-- JWT persists across refresh; logged-out users are redirected to Login.
+- [x] Full signup → onboarding step 1–3 → app shell flow works with real backend calls (agent connection can be simulated/stubbed since Sprint 3 builds the real heartbeat). Landed on a minimal placeholder post-onboarding page (`/app`) rather than a real app shell — that's Sprint 4 scope.
+- [x] JWT persists across refresh; logged-out users are redirected to Login. `AuthContext` rehydrates from `GET /auth/me` on load; `ProtectedRoute` redirects unauthenticated users to `/login`.
 
 **Dependencies:** Sprint 1 schema + API skeleton.
 **Risk:** Medium — the 3-step wizard has the most form state of any screen. If behind by Friday, ship steps 1–2 solid and stub step 3's remote-connection sub-form.

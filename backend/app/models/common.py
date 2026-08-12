@@ -3,7 +3,7 @@ import enum
 from sqlalchemy import Enum as SAEnum
 
 
-class Severity(str, enum.Enum):
+class Severity(enum.StrEnum):
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"

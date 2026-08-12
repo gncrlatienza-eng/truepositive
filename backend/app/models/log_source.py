@@ -10,18 +10,18 @@ from app.database.session import Base
 from app.models.common import pg_enum
 
 
-class LogSourceType(str, enum.Enum):
+class LogSourceType(enum.StrEnum):
     LOCAL = "local"
     REMOTE = "remote"
 
 
-class LogSourceProtocol(str, enum.Enum):
+class LogSourceProtocol(enum.StrEnum):
     SSH = "ssh"
     WINRM = "winrm"
     SYSLOG = "syslog"
 
 
-class LogSourceStatus(str, enum.Enum):
+class LogSourceStatus(enum.StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
 

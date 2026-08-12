@@ -20,10 +20,8 @@ export const theme = {
     },
   },
   font: {
-    body:
-      "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', 'Segoe UI', Helvetica, Arial, sans-serif",
-    mono:
-      "'SF Mono', ui-monospace, SFMono-Regular, 'Menlo', 'Consolas', monospace",
+    body: "'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', 'Segoe UI', Helvetica, Arial, sans-serif",
+    mono: "'JetBrains Mono', 'SF Mono', ui-monospace, SFMono-Regular, 'Menlo', 'Consolas', monospace",
   },
   radius: {
     sm: "6px",

@@ -33,6 +33,22 @@ alembic downgrade base
 
 Via Docker, run these inside the backend container: `docker-compose exec backend alembic upgrade head`.
 
+## Auth
+
+`POST /auth/signup` creates an org + its first user (role `admin`) and returns a JWT. `POST /auth/login` authenticates an existing user. `GET /auth/me` (Bearer token required) returns the current user + org — used by the frontend to validate a persisted token on load. Passwords are hashed with `bcrypt` directly (see `app/utils/security.py` — passlib's bcrypt backend detection breaks under `bcrypt>=4.1`, so passlib isn't used here).
+
+## Code Quality
+
+Enforced in CI (see root [README's Code Quality Standards](../README.md#code-quality-standards)). Config lives in `pyproject.toml`; dev tools in `requirements-dev.txt` (not in the production `requirements.txt`):
+
+```bash
+pip install -r requirements-dev.txt   # once, adds ruff + mypy on top of requirements.txt
+ruff check .            # lint
+ruff format --check .   # formatting (--write to auto-fix)
+mypy app                # type checking
+pytest                  # currently just tests/test_health.py — auth_service.py/security.py have no coverage yet
+```
+
 ## Environment Variables
 
 | Variable | Purpose |
@@ -60,4 +76,4 @@ backend/
     └── middleware/                 Auth, request logging, error handling
 ```
 
-Routes currently ship as stubs (one placeholder endpoint each) wired into `main.py` — real logic lands sprint-by-sprint per [`../docs/SPRINT_PLAN.md`](../docs/SPRINT_PLAN.md).
+`auth` now has real endpoints (see Auth section above). The rest (`agents`, `logs`, `alerts`, `reports`, `settings`) still ship as stubs (one placeholder endpoint each) wired into `main.py` — real logic lands sprint-by-sprint per [`../docs/SPRINT_PLAN.md`](../docs/SPRINT_PLAN.md).
