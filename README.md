@@ -44,7 +44,8 @@ Why PostgreSQL over a document store: the data model is inherently relational (u
 Create a `.env` file in the project root (see [Environment Variables](#environment-variables) below for what it needs), then:
 
 ```bash
-docker-compose up
+docker-compose up -d
+docker-compose exec backend alembic upgrade head   # applies the schema (first run / after pulling new migrations)
 ```
 
 - Frontend: http://localhost:3000
@@ -103,6 +104,7 @@ truepositive/
 ## Troubleshooting
 
 - **`docker-compose up` fails on Postgres connection** — confirm `.env` has `DATABASE_URL` matching the `postgres` service name (`postgres`, not `localhost`, inside Docker's network).
+- **Backend returns errors about missing tables (`relation "..." does not exist`)** — the schema hasn't been migrated yet; run `docker-compose exec backend alembic upgrade head`.
 - **Frontend can't reach the API** — check `VITE_API_URL` in `.env` matches the backend's exposed port.
 - **CI failing on a fresh clone** — make sure the [Environment Variables](#environment-variables) table stays in sync with any new required variable; CI does not have access to real secrets.
 

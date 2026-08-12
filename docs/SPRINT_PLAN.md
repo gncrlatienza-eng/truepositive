@@ -27,18 +27,18 @@ Ship a working SIEM MVP: an analyst can sign up, deploy an agent, select log sou
 **Goal:** A wired, empty skeleton boots end-to-end: `docker-compose up` brings up Postgres + FastAPI + React, all talking to each other.
 
 **Backend**
-- [ ] Full Postgres schema migration: `users`, `orgs`, `agents`, `log_sources`, `logs`, `alerts`, `alert_rules`, `incidents`, `reports`, `whitelist_entries`, `audit_log` (matches manifest's 18-table reference, start with the 11 core tables).
-- [ ] FastAPI app skeleton with health check, CORS, router registration.
-- [ ] `app/config.py` reading `DATABASE_URL`, `JWT_SECRET`, etc. from env.
+- [x] Full Postgres schema migration: `users`, `orgs`, `agents`, `log_sources`, `logs`, `alerts`, `alert_rules`, `incidents`, `reports`, `whitelist_entries`, `audit_log` (matches manifest's 18-table reference, start with the 11 core tables). Implemented as SQLAlchemy 2.0 models in `backend/app/models/` + an Alembic migration (`backend/alembic/versions/0001_initial_schema.py`).
+- [x] FastAPI app skeleton with health check, CORS, router registration.
+- [x] `app/config.py` reading `DATABASE_URL`, `JWT_SECRET`, etc. from env.
 
 **Frontend**
-- [ ] Vite + React scaffold boots, single placeholder route.
-- [ ] Design tokens extracted from the mockup into `src/styles/theme.js`: background `#0F1219`, surface `#1A1E2E`, border `#2D3748`, accent `#0891b2`, text `#E8EAED`, muted `#9CA3AF`, severity colors (critical `#dc2626`-family, warn `#a16207`, ok `#047857`), font stack (`-apple-system, 'SF Pro Display'/'SF Pro Text', 'Segoe UI'`), monospace stack (`'SF Mono', ui-monospace, 'Menlo', 'Consolas'`).
+- [x] Vite + React scaffold boots, single placeholder route.
+- [x] Design tokens extracted from the mockup into `src/styles/theme.js`: background `#0F1219`, surface `#1A1E2E`, border `#2D3748`, accent `#0891b2`, text `#E8EAED`, muted `#9CA3AF`, severity colors (critical `#dc2626`-family, warn `#a16207`, ok `#047857`), font stack (`-apple-system, 'SF Pro Display'/'SF Pro Text', 'Segoe UI'`), monospace stack (`'SF Mono', ui-monospace, 'Menlo', 'Consolas'`).
 
 **Acceptance Criteria**
-- `docker-compose up` starts all 3 services with no manual steps beyond `.env` copy.
-- `GET /health` returns 200 from the frontend's configured API base URL.
-- Schema migrations apply cleanly to a fresh Postgres instance.
+- [x] `docker-compose up` starts all 3 services with no manual steps beyond `.env` copy.
+- [x] `GET /health` returns 200 from the frontend's configured API base URL.
+- [x] Schema migrations apply cleanly to a fresh Postgres instance — verified via `alembic upgrade head` / `alembic downgrade base` / `alembic upgrade head` against a fresh container Postgres.
 
 **Dependencies:** none (this is Sprint 0 scaffold work).
 **Risk:** Low — mechanical setup. If it slips, everything downstream slips, so this sprint is not compressible.
