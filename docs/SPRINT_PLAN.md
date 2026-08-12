@@ -75,18 +75,20 @@ Ship a working SIEM MVP: an analyst can sign up, deploy an agent, select log sou
 **Goal:** A real agent can register, heartbeat, and its configured log sources are persisted and manageable.
 
 **Backend**
-- [ ] Agent registration endpoint consuming the enrollment credentials from Sprint 2's onboarding.
-- [ ] Heartbeat endpoint + last-seen tracking.
-- [ ] Encrypted credential storage for remote source auth (SSH key / password / Kerberos placeholder).
-- [ ] Log source CRUD (local + remote SSH/WinRM/Syslog).
+- [x] Agent registration endpoint consuming the enrollment credentials from Sprint 2's onboarding. `POST /agents` issues a one-time key (bcrypt-hashed at rest); `POST /agents/{id}/register` (agent-key auth) flips `pending → connected`.
+- [x] Heartbeat endpoint + last-seen tracking. `POST /agents/{id}/heartbeat`; reads lazily flip a stale `connected` agent (>90s since last heartbeat) to `disconnected` — no scheduler needed.
+- [x] Encrypted credential storage for remote source auth (SSH key / password; Kerberos accepted by the enum but rejected with 422 as "coming soon", matching the WinRM/Syslog stub below). Fernet symmetric encryption, key from `CREDENTIAL_ENCRYPTION_KEY` (no default — fails fast if unset, same pattern as `JWT_SECRET`). Decrypted plaintext never returned by any endpoint.
+- [x] Log source CRUD (local + remote). SSH only for real; WinRM/Syslog return 422 "coming soon" per this sprint's own risk note below.
 
 **Frontend**
-- [ ] Settings → Sources tab (`isSourcesTab`): list configured sources, pause/resume, edit, delete, "connect source" modal (`connectSourceOpen`).
-- [ ] Settings → Whitelist tab (`isWhitelistTab`): allow/block list view, "add entry" modal (`addEntryOpen`) with type/value/reason/expiry.
+- [x] Settings → Sources tab: lists agents (connection status/last-seen, each deletable) and configured sources, pause/resume, edit, delete, "Connect data source" modal (SSH enabled; WinRM/Syslog/Kerberos shown disabled, "coming soon"). Also has its own "+ Deploy agent" modal (shares the same enrollment UI as onboarding step 2, extracted into `components/agents/AgentEnrollmentPanel.jsx`) so people who click "Skip" during onboarding aren't stuck without a way to add an agent later. Agent delete exists because generating enrollment credentials repeatedly without connecting (easy to do via "Deploy agent") otherwise left an ever-growing pile of dead `pending` agents with no cleanup path — caught by the user in real use, not by testing. Deletes and Redeploys go through a styled confirmation modal now (not the browser's native `confirm()`), applied consistently to log source and whitelist-entry deletion too. Non-connected agents also get a "Redeploy" button — re-running the *same* already-downloaded agent already reconnects it on its own, but if that file/config is lost there was no way to get another (the raw key is never stored server-side, only its hash); Redeploy rotates the key and hands back a fresh, ready-to-run download.
+- [x] Settings → Whitelist tab: allowlist view (BLOCKLIST toggle shown disabled, "coming soon" — the model has no block/allow kind column and the AC only calls for allowlist behavior), "Add entry" modal with type/value/reason/expiry.
 
 **Acceptance Criteria**
-- An agent process (can be a scripted stub for this sprint) can register with real credentials and appear as "connected" in onboarding step 2 and in Settings → Sources.
-- Whitelist entries persist and are enforced at the query layer (excluded from later log/alert views).
+- [x] An agent process (can be a scripted stub for this sprint) can register with real credentials and appear as "connected" in onboarding step 2 and in Settings → Sources. Implemented as a real, runnable, dependency-free script (`agent/tp_agent.py`) rather than a curl demo — it genuinely registers and heartbeats over HTTP, and is what flips the dashboard's live-polling UI to "connected." Windows users get an actual click-to-install experience: "Download agent for Windows" downloads one standalone, pre-configured `.exe` (PyInstaller, no Python required, credentials embedded server-side — not a separate file to keep track of) — double-click, nothing to type. (An earlier two-file version hit browsers' silent multi-download blocking on a second automatic file; fixed by embedding the config directly in the binary instead.) Verified end-to-end in a real browser, including actually downloading the single file and running it with zero arguments: it registers, and the dashboard flips to "Agent connected" with the real hostname with no page refresh.
+- [x] Whitelist entries persist and are enforced at the query layer (excluded from later log/alert views). `whitelist_service.exclude_whitelisted()` is a reusable filter (`column.notin_(active, non-expired values)`) plus a `GET /settings/whitelist/effective` endpoint to inspect the active set. Since no log/alert list endpoint exists yet (Sprint 5), this is proven with a test that inserts real rows into the `logs` table and asserts the filter drops only the actively-whitelisted one — genuinely enforced at the query layer, not just documented as a plan.
+
+Also fixed pre-existing bug found while testing this sprint: `/onboarding` was wrapped in `GuestRoute`, which redirected any signed-in user to `/app` — since step 1 signs the user in immediately, onboarding steps 2 and 3 were unreachable after a real signup since Sprint 2 (nothing in those steps called the API yet, so it went unnoticed).
 
 **Dependencies:** Sprint 2 onboarding UI + auth.
 **Risk:** Medium — remote protocol handling (SSH/WinRM) is genuinely complex; for this sprint it's acceptable to implement SSH only and stub WinRM/Syslog as "coming soon" in the UI.

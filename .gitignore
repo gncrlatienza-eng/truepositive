@@ -11,6 +11,8 @@
 *.p12
 secrets/
 credentials.json
+# Per-agent enrollment config downloaded from the dashboard (agent/tp_agent.py) — contains a real key.
+agent_config.json
 
 # ==============================
 # Claude workspace (not committed)

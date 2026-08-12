@@ -32,4 +32,6 @@ class Agent(Base):
     agent_key_hash: Mapped[str] = mapped_column(String(255))
     status: Mapped[AgentStatus] = mapped_column(pg_enum(AgentStatus, "agent_status"), default=AgentStatus.PENDING)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    enrollment_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import { OutlineButton } from "../components/auth/fields";
@@ -35,9 +35,18 @@ export default function AppHomePage() {
       <div style={{ color: theme.color.textFaint, fontSize: 14, maxWidth: 420, textAlign: "center" }}>
         This is a placeholder — the real app shell (sidebar, dashboard) lands in Sprint 4.
       </div>
-      <OutlineButton type="button" style={{ width: "auto" }} onClick={handleLogout}>
-        Log out
-      </OutlineButton>
+      <div style={{ display: "flex", gap: theme.space[3] }}>
+        <Link
+          to="/settings"
+          className="tp-btn tp-btn-outline"
+          style={{ width: "auto", padding: "15px 24px", textDecoration: "none" }}
+        >
+          Workspace settings
+        </Link>
+        <OutlineButton type="button" style={{ width: "auto" }} onClick={handleLogout}>
+          Log out
+        </OutlineButton>
+      </div>
     </div>
   );
 }

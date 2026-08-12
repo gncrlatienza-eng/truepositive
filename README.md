@@ -69,9 +69,12 @@ No `.env.example` is committed — copy the table below into a `.env` file yours
 | `JWT_SECRET` | backend | Signing key for auth tokens | a long random string |
 | `JWT_EXPIRE_MINUTES` | backend | Token lifetime in minutes | `43200` |
 | `CORS_ORIGINS` | backend | Comma-separated allowed frontend origins | `http://localhost:3000` |
+| `CREDENTIAL_ENCRYPTION_KEY` | backend | Fernet key encrypting remote log-source credentials at rest | output of `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `VITE_API_URL` | frontend | Base URL the frontend calls for the API | `http://localhost:8000` |
 
 Inside `docker-compose.yml`, `DATABASE_URL` for the `backend` service is already set to point at the `postgres` container — your `.env`'s `DATABASE_URL` only needs to be correct for running the backend standalone (outside Docker).
+
+**Agent download** (dashboard's "Deploy agent" flow): `GET /agents/download/windows` serves `agent/dist/tp_agent.exe`, a locally-built binary that's gitignored, not committed — build it once with `pip install pyinstaller && pyinstaller --onefile --noconsole --name tp_agent agent/tp_agent.py` (see `agent/README.md`). The endpoint 404s with a helpful message until it exists; nothing else in the stack depends on it being built.
 
 ## Project Structure
 

@@ -1,17 +1,20 @@
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database.session import get_db
+from app.models.agent import Agent
 from app.models.user import User
 
 _bearer_scheme = HTTPBearer(auto_error=False)
+_agent_key_scheme = APIKeyHeader(name="X-Agent-Key", auto_error=False)
 
 JWT_ALGORITHM = "HS256"
 
@@ -53,3 +56,24 @@ def get_current_user(
     if user is None:
         raise unauthorized
     return user
+
+
+def generate_agent_key() -> str:
+    return f"tpa_{secrets.token_urlsafe(32)}"
+
+
+def get_current_agent(
+    agent_id: uuid.UUID,
+    agent_key: str | None = Depends(_agent_key_scheme),
+    db: Session = Depends(get_db),
+) -> Agent:
+    # Deliberately the same 401 whether the agent doesn't exist or the key is
+    # wrong — distinguishing the two would leak which agent IDs are valid.
+    unauthorized = HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    if agent_key is None:
+        raise unauthorized
+
+    agent = db.get(Agent, agent_id)
+    if agent is None or not verify_password(agent_key, agent.agent_key_hash):
+        raise unauthorized
+    return agent

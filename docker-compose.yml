@@ -22,6 +22,11 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://truepositive:truepositive@postgres:5432/truepositive
+    volumes:
+      # Read-only: lets GET /agents/download/windows serve the built binary
+      # without baking it into the image (agent/dist/ is a gitignored,
+      # locally-built PyInstaller artifact — see agent/README.md).
+      - ./agent/dist:/app/agent_dist:ro
     ports:
       - "8000:8000"
     depends_on:

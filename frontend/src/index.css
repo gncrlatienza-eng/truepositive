@@ -248,3 +248,33 @@ input[type="checkbox"] {
     grid-template-columns: 1fr;
   }
 }
+
+/* Settings modals (frontend/src/components/common/Modal.jsx) */
+
+@keyframes tp-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tp-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tp-modal-overlay {
+  animation: tp-fade 0.15s ease;
+}
+
+.tp-modal-card {
+  animation: tp-pop 0.15s ease;
+}
