@@ -9,14 +9,14 @@ from app.database.session import Base
 from app.models.common import pg_enum
 
 
-class AgentPlatform(str, enum.Enum):
+class AgentPlatform(enum.StrEnum):
     WINDOWS = "windows"
     LINUX = "linux"
     DOCKER = "docker"
     KUBERNETES = "kubernetes"
 
 
-class AgentStatus(str, enum.Enum):
+class AgentStatus(enum.StrEnum):
     PENDING = "pending"
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"

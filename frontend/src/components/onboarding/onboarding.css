@@ -1,0 +1,231 @@
+/* Scoped to the onboarding wizard only — see onboardingTheme.js for the palette. */
+
+.tp-wizard-input,
+.tp-wizard-select {
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: 1px solid #2d3748;
+  border-radius: 999px;
+  height: 54px;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: #e5e7eb;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+
+.tp-wizard-input {
+  padding: 14px 24px;
+}
+
+/* Genuinely technical values (workspace slug) stay monospace — everything
+   else reads as a form, not a terminal. */
+.tp-wizard-input-mono {
+  font-family: "JetBrains Mono", "SF Mono", "Courier New", monospace;
+  font-size: 16px;
+}
+
+.tp-wizard-select {
+  padding: 14px 44px 14px 24px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%238b8b8b'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 20px center;
+  background-size: 16px;
+  cursor: pointer;
+}
+
+.tp-wizard-select option {
+  background: #1a2332;
+  color: #d1d5db;
+}
+
+.tp-wizard-input::placeholder {
+  color: #6b7280;
+}
+
+.tp-wizard-select {
+  background-color: transparent;
+}
+
+.tp-wizard-select option {
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+.tp-wizard-input:hover,
+.tp-wizard-select:hover {
+  border-color: #4b5768;
+}
+
+.tp-wizard-input:focus,
+.tp-wizard-select:focus {
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18);
+}
+
+.tp-wizard-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border: 1px solid #374151;
+  border-radius: 4px;
+  background: #0f1419;
+  cursor: pointer;
+  position: relative;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.tp-wizard-checkbox:checked {
+  background: #06b6d4;
+  border-color: #06b6d4;
+}
+
+.tp-wizard-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  width: 6px;
+  height: 10px;
+  border: solid #f0fdf4;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.tp-wizard-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 56px;
+  padding: 14px 24px;
+  border: none;
+  border-radius: 999px;
+  background: #06b6d4;
+  color: #0f1419;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.tp-wizard-btn-primary:hover:not(:disabled) {
+  background: #0891b2;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.2);
+}
+
+.tp-wizard-btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tp-wizard-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(15, 20, 25, 0.35);
+  border-top-color: #0f1419;
+  border-radius: 50%;
+  animation: tp-wizard-spin 0.6s linear infinite;
+}
+
+@keyframes tp-wizard-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tp-wizard-sidebar-step {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px 22px;
+  border-left: 4px solid transparent;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+  background: #1a2332;
+}
+
+.tp-wizard-sidebar-step:hover {
+  background: #151c28;
+}
+
+.tp-wizard-sidebar-step.active {
+  background: #151c28;
+  border-left-color: #06b6d4;
+  box-shadow: inset 0 0 8px rgba(6, 182, 212, 0.05);
+}
+
+.tp-wizard-exit:hover {
+  color: #d1d5db;
+}
+
+.tp-wizard-terms-link {
+  color: #06b6d4;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tp-wizard-terms-link:hover {
+  text-decoration: underline;
+}
+
+.tp-wizard-help {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: tp-wizard-help-in 200ms ease forwards;
+}
+
+@keyframes tp-wizard-help-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tp-wizard-help-panel {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .tp-wizard-sidebar {
+    display: none;
+  }
+  .tp-wizard-content {
+    padding: 24px 16px !important;
+  }
+}
+
+@media (min-width: 1440px) {
+  .tp-wizard-help-panel {
+    display: block;
+  }
+}

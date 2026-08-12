@@ -1,0 +1,36 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+# Alembic migrations are a generated historical record, not hand-maintained
+# style — leave already-applied/pending revisions untouched.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's own recommended pattern is `param: X = Depends(...)` in a function
+# signature default — B008 otherwise flags every route/dependency in the app.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Form",
+    "fastapi.File",
+    "fastapi.Security",
+]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+# pydantic-settings populates required fields (e.g. Settings.jwt_secret) from
+# the environment at runtime, not via constructor args — without this plugin,
+# mypy sees `Settings()` and reports a false-positive missing-argument error.
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

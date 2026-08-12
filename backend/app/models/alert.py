@@ -9,7 +9,7 @@ from app.database.session import Base
 from app.models.common import Severity, pg_enum
 
 
-class AlertStatus(str, enum.Enum):
+class AlertStatus(enum.StrEnum):
     OPEN = "open"
     ACK = "ack"
     ESCALATED = "escalated"

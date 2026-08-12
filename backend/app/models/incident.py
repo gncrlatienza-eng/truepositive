@@ -9,7 +9,7 @@ from app.database.session import Base
 from app.models.common import pg_enum
 
 
-class IncidentStatus(str, enum.Enum):
+class IncidentStatus(enum.StrEnum):
     OPEN = "open"
     INVESTIGATING = "investigating"
     RESOLVED = "resolved"

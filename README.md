@@ -13,7 +13,7 @@ Log analysis and alert triage for security teams. TruePositive ingests Windows, 
 | Backend | FastAPI (Python) |
 | Database | PostgreSQL |
 | Containerization | Docker + Docker Compose |
-| CI | GitHub Actions |
+| CI | GitHub Actions — see [Code Quality Standards](#code-quality-standards) |
 
 Why PostgreSQL over a document store: the data model is inherently relational (users → orgs → agents → log sources → logs → alerts → incidents), needs multi-table joins and audit trails for compliance, and benefits from ACID transactions when an alert triggers an automated playbook action.
 
@@ -94,6 +94,25 @@ truepositive/
 2. Build against the UI mockup as the source of truth for every screen, color, and interaction. It lives in `reference/` (gitignored — not part of this repo) rather than committed; ask the project owner if you need a copy.
 3. Run the stack locally (`docker-compose up`) and verify the change against the relevant screen before committing.
 4. Commit and push yourself — generated code is reviewed first, never auto-committed.
+
+## Code Quality Standards
+
+Every push/PR runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which enforces:
+
+| Layer | Lint / Format | Type checking | Tests |
+|---|---|---|---|
+| Backend (Python) | [`ruff`](https://docs.astral.sh/ruff/) (lint + format, one tool) — config in `backend/pyproject.toml` | `mypy` | `pytest` — see `backend/README.md` |
+| Frontend (JS/React) | ESLint (`eslint-plugin-react` + `eslint-plugin-react-hooks`) + Prettier — config in `frontend/eslint.config.js` / `.prettierrc.json` | — (plain JS, no TypeScript) | — none yet, see `frontend/README.md` |
+
+Run locally before committing: `backend/README.md` and `frontend/README.md` each have the exact commands for their layer. A few deliberate calls worth knowing about:
+
+- **`ruff`'s `B008` rule is relaxed for FastAPI's `Depends(...)`-in-default-arg pattern** (that's the framework's own recommended style, not a bug) — see the `extend-immutable-calls` comment in `backend/pyproject.toml`.
+- **`alembic/versions/` is excluded from ruff** — migrations are a generated historical record, not hand-maintained style.
+- **Frontend test coverage is zero** — `pytest` has one smoke test (`backend/tests/test_health.py`); nothing on the frontend yet. Both are open follow-up work, not blocking CI today.
+
+## Security
+
+See [`SECURITY.md`](SECURITY.md) for the standard we align to (OWASP ASVS), an honest map of what's covered vs. known gaps, and how to report a vulnerability.
 
 ## Deployment
 

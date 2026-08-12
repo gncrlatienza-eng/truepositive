@@ -10,7 +10,7 @@ from app.database.session import Base
 from app.models.common import pg_enum
 
 
-class ReportType(str, enum.Enum):
+class ReportType(enum.StrEnum):
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
