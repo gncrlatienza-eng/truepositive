@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_expire_minutes: int = 60 * 24 * 30
     cors_origins: str = "http://localhost:3000"
+    credential_encryption_key: str
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -27,6 +27,7 @@ async def security_headers(request: Request, call_next):
     response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
 
+
 app.include_router(auth.router)
 app.include_router(agents.router)
 app.include_router(logs.router)

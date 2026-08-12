@@ -12,8 +12,26 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      # test_agents.py/test_log_sources.py/test_whitelist.py exercise real
+      # JSONB, native-enum, and UUID columns — SQLite can't stand in.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: truepositive
+          POSTGRES_PASSWORD: truepositive
+          POSTGRES_DB: truepositive
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U truepositive"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     env:
       JWT_SECRET: ci-placeholder-secret-not-for-real-use
+      CREDENTIAL_ENCRYPTION_KEY: KMpxRR-i1Th9aZAoc-KvHHjMwj6GIII5mK-coU656-8=
+      DATABASE_URL: postgresql://truepositive:truepositive@localhost:5432/truepositive
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

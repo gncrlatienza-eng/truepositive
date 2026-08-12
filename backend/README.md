@@ -37,6 +37,18 @@ Via Docker, run these inside the backend container: `docker-compose exec backend
 
 `POST /auth/signup` creates an org + its first user (role `admin`) and returns a JWT. `POST /auth/login` authenticates an existing user. `GET /auth/me` (Bearer token required) returns the current user + org — used by the frontend to validate a persisted token on load. Passwords are hashed with `bcrypt` directly (see `app/utils/security.py` — passlib's bcrypt backend detection breaks under `bcrypt>=4.1`, so passlib isn't used here).
 
+## Agents & Log Sources
+
+**Enrollment**: `POST /agents` (user JWT) creates a `pending` agent and returns a one-time enrollment key — shown once, stored only as a bcrypt hash (`agent_key_hash`). `POST /agents/{id}/register` and `POST /agents/{id}/heartbeat` (both authenticated via the `X-Agent-Key` header, not a user JWT — see `get_current_agent` in `app/utils/security.py`) flip it to `connected` and track `last_seen_at`. Reads (`GET /agents`, `GET /agents/{id}`) lazily flip a `connected` agent to `disconnected` if it's been more than 90s since its last heartbeat — there's no background scheduler.
+
+**The real agent** (`agent/tp_agent.py`) is a genuine runnable process, not a curl demo — see `agent/README.md`. Both `/agents/download/windows` endpoints serve a pre-built, gitignored `.exe` (bind-mounted from `agent/dist/`, not baked into the image): `GET` returns the raw generic binary; `POST` (user JWT, body `{url, id, key}`, key verified against the stored hash) returns the same binary with that agent's connection details appended after a marker, so the dashboard's "Download agent" button delivers one fully self-contained, pre-configured file.
+
+`DELETE /agents/{id}` removes an agent — any `log_sources` still pointing at it get `agent_id` set to `NULL` rather than being deleted too (a source someone configured is worth keeping even if the agent behind it never connected or gets replaced). Exists specifically so re-generating enrollment credentials without ever connecting (e.g. testing, or Settings → Sources → "Deploy agent" opened more than once) doesn't leave an ever-growing pile of dead `pending` agents with no way to clean them up.
+
+**Log sources** (`/logs/sources`): CRUD with org scoping. Remote (SSH) credentials are Fernet-encrypted at rest (`app/utils/crypto.py`) before storage — no endpoint or schema ever returns the decrypted plaintext, only a derived `has_credential: bool`. WinRM/Syslog protocols and Kerberos auth are accepted by the schema's enums but rejected with 422 — SSH + (key or password) is the only real path this sprint.
+
+**Whitelist** (`/settings/whitelist`): CRUD, `UNIQUE(org_id, type, value)` → 409 on duplicate. `whitelist_service.exclude_whitelisted()` is a reusable query-layer filter meant for Sprint 5's future log/alert list queries — see `tests/test_whitelist.py` for a proof against real `logs` rows, since no log-listing endpoint exists yet.
+
 ## Code Quality
 
 Enforced in CI (see root [README's Code Quality Standards](../README.md#code-quality-standards)). Config lives in `pyproject.toml`; dev tools in `requirements-dev.txt` (not in the production `requirements.txt`):
@@ -46,8 +58,10 @@ pip install -r requirements-dev.txt   # once, adds ruff + mypy on top of require
 ruff check .            # lint
 ruff format --check .   # formatting (--write to auto-fix)
 mypy app                # type checking
-pytest                  # currently just tests/test_health.py — auth_service.py/security.py have no coverage yet
+pytest                  # needs a reachable Postgres (DATABASE_URL) — exercises real JSONB/enum/UUID columns
 ```
+
+`auth_service.py`/`security.py` still have no dedicated test coverage (a pre-existing gap from Sprint 2) — `tests/conftest.py`'s fixtures (`client`, `auth_headers`, `db_session`) were built for Sprint 3's agent/log-source/whitelist tests but work equally well for backfilling that.
 
 ## Environment Variables
 
@@ -57,6 +71,7 @@ pytest                  # currently just tests/test_health.py — auth_service.p
 | `JWT_SECRET` | Signing key for auth tokens |
 | `JWT_EXPIRE_MINUTES` | Token lifetime |
 | `CORS_ORIGINS` | Comma-separated allowed frontend origins |
+| `CREDENTIAL_ENCRYPTION_KEY` | Fernet key encrypting remote log-source credentials at rest |
 
 ## Folder Layout
 
@@ -76,4 +91,4 @@ backend/
     └── middleware/                 Auth, request logging, error handling
 ```
 
-`auth` now has real endpoints (see Auth section above). The rest (`agents`, `logs`, `alerts`, `reports`, `settings`) still ship as stubs (one placeholder endpoint each) wired into `main.py` — real logic lands sprint-by-sprint per [`../docs/SPRINT_PLAN.md`](../docs/SPRINT_PLAN.md).
+`auth`, `agents`, and `logs` (sources) and `settings` (whitelist) now have real endpoints (see the sections above). `alerts` and `reports` still ship as stubs (one placeholder endpoint each) wired into `main.py` — real logic lands sprint-by-sprint per [`../docs/SPRINT_PLAN.md`](../docs/SPRINT_PLAN.md).
