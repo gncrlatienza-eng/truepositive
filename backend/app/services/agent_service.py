@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent, AgentStatus
@@ -92,6 +92,32 @@ def rotate_key(db: Session, org_id: uuid.UUID, agent_id: uuid.UUID) -> tuple[Age
     db.commit()
     db.refresh(agent)
     return agent, raw_key
+
+
+def count_online(db: Session, org_id: uuid.UUID) -> tuple[int, int]:
+    """(online, total) agent counts for dashboard aggregation.
+
+    Deliberately does not trust the raw `status` column: CONNECTED is only
+    flipped to DISCONNECTED lazily, when an agent is read through
+    list_agents/get_agent (see _sweep_stale above) — there's no background
+    sweep. A bulk COUNT(*) GROUP BY status here would see stale CONNECTED
+    rows, so "online" is computed directly from last_seen_at instead.
+    """
+    total = db.scalar(select(func.count()).select_from(Agent).where(Agent.org_id == org_id)) or 0
+    online = (
+        db.scalar(
+            select(func.count())
+            .select_from(Agent)
+            .where(
+                Agent.org_id == org_id,
+                Agent.status == AgentStatus.CONNECTED,
+                Agent.last_seen_at.is_not(None),
+                Agent.last_seen_at > datetime.now(UTC) - STALE_AFTER,
+            )
+        )
+        or 0
+    )
+    return online, total
 
 
 def delete_agent(db: Session, org_id: uuid.UUID, agent_id: uuid.UUID) -> None:

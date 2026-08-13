@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import agents, alerts, auth, logs, reports
+from app.routes import agents, alerts, auth, dashboard, logs, reports
 from app.routes import settings as settings_route
 
 app = FastAPI(title="TruePositive API")
@@ -34,6 +34,7 @@ app.include_router(logs.router)
 app.include_router(alerts.router)
 app.include_router(reports.router)
 app.include_router(settings_route.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/health")

@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { theme } from "../../styles/theme";
 
-// Minimal reusable modal shell for Sprint 3's Connect Source / Add Whitelist
-// Entry dialogs. Sprint 4's component library is expected to supersede this.
+// Reusable modal shell — used by Settings' Connect Source / Add Whitelist
+// Entry dialogs (Sprint 3) and the dashboard's drill-in confirmations (Sprint 4).
 export default function Modal({ open, onClose, title, children, footer, width = 520 }) {
   useEffect(() => {
     if (!open) return undefined;
