@@ -49,6 +49,20 @@ Via Docker, run these inside the backend container: `docker-compose exec backend
 
 **Whitelist** (`/settings/whitelist`): CRUD, `UNIQUE(org_id, type, value)` → 409 on duplicate. `whitelist_service.exclude_whitelisted()` is a reusable query-layer filter meant for Sprint 5's future log/alert list queries — see `tests/test_whitelist.py` for a proof against real `logs` rows, since no log-listing endpoint exists yet.
 
+## Dashboard
+
+`/dashboard/summary?window=24h|7d|30d` and nine `/dashboard/panels/*` endpoints (one per drill-in panel type: critical, ingestion, events, alerts, triage, risk, severity/{severity}, rule/{rule_id}, event-type/{event_type}) — all real SQL aggregation over `logs`/`alerts`/`agents`, org-scoped, no fabricated analytics. Since nothing writes to `logs`/`alerts` yet outside this sprint's seed script (real ingestion is Sprint 5), a fresh org legitimately sees all-zero/empty responses — that's the correct, honest behavior, not a bug. Risk score reuses the UI mockup's own documented weighted formula (Critical×4, High×2, Medium×1, OK×0.3). Agent online/offline counts are computed directly from `last_seen_at` (`agent_service.count_online`) rather than trusting the `status` column, since it's only swept on read. The Alert Queue response (`AlertQueueItem`) has no ack/escalate fields at all — those mutations don't exist until Sprint 5.
+
+### Local dev seed data
+
+`logs`/`alerts` are empty in any real deployment today. To review the dashboard with realistic (not all-zero) numbers locally:
+
+```bash
+python scripts/seed_dashboard_data.py <org-slug>
+```
+
+Run from `backend/`, against whatever `DATABASE_URL` your environment is already using — inserts sample agents/log sources/alert rules/logs/alerts tied to an *existing* org (looked up by workspace slug; fails loudly if it doesn't exist rather than creating one). Re-running clears its own previously-seeded rows first (safe/idempotent). **Manual-only** — not invoked by `docker-compose.yml` or CI, and should stay that way.
+
 ## Code Quality
 
 Enforced in CI (see root [README's Code Quality Standards](../README.md#code-quality-standards)). Config lives in `pyproject.toml`; dev tools in `requirements-dev.txt` (not in the production `requirements.txt`):
@@ -85,10 +99,10 @@ backend/
     ├── database/          SQLAlchemy engine/session setup
     ├── models/             SQLAlchemy ORM models, one file per table
     ├── schemas/             Pydantic request/response schemas
-    ├── routes/                auth, agents, logs, alerts, reports, settings — one router per domain
+    ├── routes/                auth, agents, logs, alerts, reports, settings, dashboard — one router per domain
     ├── services/                Business logic called by routes (kept out of route handlers)
     ├── utils/                     Helpers: encryption, formatting, validation
     └── middleware/                 Auth, request logging, error handling
 ```
 
-`auth`, `agents`, and `logs` (sources) and `settings` (whitelist) now have real endpoints (see the sections above). `alerts` and `reports` still ship as stubs (one placeholder endpoint each) wired into `main.py` — real logic lands sprint-by-sprint per [`../docs/SPRINT_PLAN.md`](../docs/SPRINT_PLAN.md).
+`auth`, `agents`, `logs` (sources), `settings` (whitelist), and `dashboard` now have real endpoints (see the sections above). `alerts` and `reports` still ship as stubs (one placeholder endpoint each) wired into `main.py` — real logic lands sprint-by-sprint per [`../docs/SPRINT_PLAN.md`](../docs/SPRINT_PLAN.md).

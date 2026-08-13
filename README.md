@@ -83,6 +83,7 @@ truepositive/
 ├── frontend/    React + Vite web dashboard — see frontend/README.md
 ├── mobile/      React Native + Expo app (Phase 2, minimal scaffold) — see mobile/README.md
 ├── backend/     FastAPI server — see backend/README.md
+├── agent/       Standalone log-collection agent (script + packaged Windows .exe) — see agent/README.md
 ├── docker/      Dockerfiles + nginx config — see docker/README.md
 ├── scripts/     Setup/dev scripts — see scripts/README.md
 ├── docs/        Sprint plan and specs — see docs/README.md

@@ -278,3 +278,157 @@ input[type="checkbox"] {
 .tp-modal-card {
   animation: tp-pop 0.15s ease;
 }
+
+/* Component library (frontend/src/components/common/*) — compact chrome for
+   the app shell/dashboard, distinct from the full-width pill .tp-btn/.tp-input
+   above (which stay as-is for the auth/onboarding forms they were built for). */
+
+.tp-btn2 {
+  border: none;
+  font-family: inherit;
+}
+
+.tp-btn2:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.25);
+}
+
+.tp-btn2-primary:hover:not(:disabled) {
+  background: #067a94;
+}
+
+.tp-btn2-secondary:hover:not(:disabled) {
+  border-color: #4b5563;
+  color: #e8eaed;
+}
+
+.tp-btn2-danger:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.tp-field-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid #2d3748;
+  background: #0f1219;
+  color: #e8eaed;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.tp-field-input:focus {
+  border-color: #0891b2;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.18);
+}
+
+.tp-field-input::placeholder {
+  color: #4b5563;
+}
+
+.tp-card {
+  background: #1a1e2e;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+}
+
+.tp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.tp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tp-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2d3748;
+  white-space: nowrap;
+}
+
+.tp-table th[data-sortable="true"] {
+  cursor: pointer;
+  user-select: none;
+}
+
+.tp-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #2d3748;
+  vertical-align: middle;
+}
+
+.tp-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tp-toast-viewport {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 2000;
+}
+
+.tp-toast {
+  background: #1a1e2e;
+  border: 1px solid #2d3748;
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #e8eaed;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  animation: tp-pop 0.15s ease;
+  min-width: 240px;
+  max-width: 360px;
+}
+
+.tp-toast-info {
+  border-left-color: #0891b2;
+}
+
+.tp-toast-success {
+  border-left-color: #047857;
+}
+
+.tp-toast-error {
+  border-left-color: #dc2626;
+}
+
+/* App shell (frontend/src/components/layout/*) */
+
+.tp-sidebar-item {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tp-sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tp-topbar-search:hover {
+  border-color: #4b5563;
+}

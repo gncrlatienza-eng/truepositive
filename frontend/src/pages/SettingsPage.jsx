@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { theme } from "../styles/theme";
 import SourcesTab from "../components/settings/SourcesTab";
 import WhitelistTab from "../components/settings/WhitelistTab";
@@ -9,29 +8,17 @@ const TABS = [
   { id: "whitelist", label: "Whitelisting" },
 ];
 
-// Standalone protected page — no app shell (sidebar/dashboard) exists yet,
-// that's Sprint 4. Reached from AppHomePage's "Workspace settings" link.
+// Rendered inside AppShell (sidebar/topbar) as of Sprint 4 — no longer builds
+// its own header/back-link, since the shell now provides navigation
+// (and the Config nav item highlights while this page is active).
 export default function SettingsPage() {
   const [tab, setTab] = useState("sources");
 
   return (
-    <div style={{ minHeight: "100vh", background: theme.color.background, color: theme.color.text }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: `${theme.space[4]}px ${theme.space[7]}px`,
-          borderBottom: `1px solid ${theme.color.border}`,
-        }}
-      >
-        <h1 style={{ fontSize: 20 }}>Settings</h1>
-        <Link to="/app" style={{ fontSize: 14, color: theme.color.textMuted, textDecoration: "none" }}>
-          ← Back to app
-        </Link>
-      </div>
-
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
       <div style={{ maxWidth: 900, margin: "0 auto", padding: theme.space[7] }}>
+        <h1 style={{ fontSize: 28, marginBottom: theme.space[6] }}>Settings</h1>
+
         <div style={{ display: "flex", gap: theme.space[2], marginBottom: theme.space[6] }}>
           {TABS.map((t) => (
             <button
