@@ -3,6 +3,7 @@ import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { deleteAgent, listAgents } from "../../api/agents";
 import { deleteSource, listSources, updateSource } from "../../api/sources";
+import AgentCredentialsCard from "../agents/AgentCredentialsCard";
 import ConfirmModal from "../common/ConfirmModal";
 import ConnectSourceModal from "./ConnectSourceModal";
 import DeployAgentModal from "./DeployAgentModal";
@@ -21,6 +22,19 @@ function relativeTime(iso) {
   if (seconds < 60) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   return `${Math.floor(seconds / 3600)}h ago`;
+}
+
+// A pending agent's enrollment_key stays visible (Agent.enrollment_key,
+// backend-decrypted) for the same 24h window enrollment_expires_at already
+// tracked — computed from the timestamp directly rather than just trusting
+// enrollment_key's presence, so a still-open tab flips to "expired" live
+// instead of waiting on a refetch.
+function isEnrollmentExpired(agent) {
+  return (
+    agent.status === "pending" &&
+    !!agent.enrollment_expires_at &&
+    new Date(agent.enrollment_expires_at).getTime() <= Date.now()
+  );
 }
 
 function StatusDot({ color }) {
@@ -109,37 +123,69 @@ export default function SourcesTab() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
-                {agents.map((a) => (
-                  <div
-                    key={a.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: theme.space[3],
-                      padding: theme.space[3],
-                      border: `1px solid ${theme.color.border}`,
-                      borderRadius: theme.radius.md,
-                      background: theme.color.surface,
-                    }}
-                  >
-                    <StatusDot color={AGENT_STATUS_COLOR[a.status]} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>
-                        {a.name} {a.hostname && <span style={{ color: theme.color.textMuted }}>· {a.hostname}</span>}
-                      </div>
-                      <div style={{ fontSize: 12, color: theme.color.textFaint }}>
-                        {a.status} · last seen {relativeTime(a.last_seen_at)}
-                      </div>
-                    </div>
-                    <OutlineButton
-                      type="button"
-                      style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
-                      onClick={() => setConfirmTarget({ type: "agent", item: a })}
+                {agents.map((a) => {
+                  const expired = isEnrollmentExpired(a);
+                  const showCredentials = a.status === "pending" && !expired && !!a.enrollment_key;
+                  return (
+                    <div
+                      key={a.id}
+                      style={{
+                        border: `1px solid ${theme.color.border}`,
+                        borderRadius: theme.radius.md,
+                        background: theme.color.surface,
+                      }}
                     >
-                      Delete
-                    </OutlineButton>
-                  </div>
-                ))}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: theme.space[3],
+                          padding: theme.space[3],
+                        }}
+                      >
+                        <StatusDot color={AGENT_STATUS_COLOR[a.status]} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>
+                            {a.name}{" "}
+                            {a.hostname && <span style={{ color: theme.color.textMuted }}>· {a.hostname}</span>}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: expired ? theme.color.severity.critical : theme.color.textFaint,
+                            }}
+                          >
+                            {expired
+                              ? "Enrollment expired — deploy a new agent"
+                              : `${a.status} · last seen ${relativeTime(a.last_seen_at)}`}
+                          </div>
+                        </div>
+                        <OutlineButton
+                          type="button"
+                          style={{
+                            width: "auto",
+                            padding: "6px 12px",
+                            fontSize: 13,
+                            color: theme.color.severity.critical,
+                          }}
+                          onClick={() => setConfirmTarget({ type: "agent", item: a })}
+                        >
+                          Delete
+                        </OutlineButton>
+                      </div>
+                      {showCredentials && (
+                        <div style={{ borderTop: `1px solid ${theme.color.border}`, padding: theme.space[4] }}>
+                          <AgentCredentialsCard
+                            agent={a}
+                            enrollmentKey={a.enrollment_key}
+                            platform={a.platform}
+                            embedded
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -81,6 +81,7 @@ def test_run_silent_gives_up_cleanly_after_retries_exhausted():
 
     with (
         patch("tp_agent._post", side_effect=fake_post),
+        patch("tp_agent._write_status"),
         patch("tp_agent.time.sleep") as mock_sleep,
     ):
         tp_agent.run_silent("http://x", "agent-1", "key-1")
@@ -98,6 +99,7 @@ def test_run_silent_persists_config_and_reregisters_autostart_on_success():
         patch("tp_agent._post", return_value={"status": "connected", "hostname": "h"}),
         patch("tp_agent._ensure_local_config_persisted") as mock_persist,
         patch("tp_agent._ensure_windows_autostart") as mock_autostart,
+        patch("tp_agent._write_status"),
         patch("tp_agent._load_state", return_value={}),
         patch("tp_agent._collect_and_ship"),
         patch("tp_agent.time.sleep", side_effect=_StopLoop),
@@ -109,3 +111,62 @@ def test_run_silent_persists_config_and_reregisters_autostart_on_success():
 
     mock_persist.assert_called_once()
     mock_autostart.assert_called_once()
+
+
+def test_run_silent_writes_status_on_register_failure_and_success():
+    # A background --silent instance has no window at all — agent_status.json
+    # (via _write_status) is the only place its real state is ever visible,
+    # so a manual double-click's "already running" dialog can show it.
+    written = []
+    responses = iter(
+        [
+            tp_agent.AgentRequestError("connection refused"),
+            {"status": "connected", "hostname": "h"},
+        ]
+    )
+
+    def fake_post(_url, _key, _body):
+        result = next(responses)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    with (
+        patch("tp_agent._post", side_effect=fake_post),
+        patch("tp_agent._write_status", side_effect=lambda *a: written.append(a)),
+        patch("tp_agent._ensure_local_config_persisted"),
+        patch("tp_agent._ensure_windows_autostart"),
+        patch("tp_agent._load_state", return_value={}),
+        patch("tp_agent._collect_and_ship"),
+        patch("tp_agent.time.sleep", side_effect=[None, _StopLoop()]),
+    ):
+        try:
+            tp_agent.run_silent("http://x", "agent-1", "key-1")
+        except _StopLoop:
+            pass
+
+    assert written[0] == ("Connection failed", "connection refused", "agent-1")
+    assert written[1][0] == "Connected"
+    assert written[1][2] == "agent-1"
+
+
+def test_format_already_running_message_includes_status_when_present():
+    message = tp_agent._format_already_running_message(
+        {
+            "status": "Heartbeat failed",
+            "detail": "Could not reach http://localhost:8000: [Errno 111] Connection refused",
+            "agent_id": "agent-1",
+            "updated_at": "2026-08-16 10:32:05",
+        }
+    )
+    assert "already running" in message
+    assert "Status: Heartbeat failed" in message
+    assert "Connection refused" in message
+    assert "Agent ID: agent-1" in message
+    assert "Last updated: 2026-08-16 10:32:05" in message
+
+
+def test_format_already_running_message_handles_no_status_recorded_yet():
+    message = tp_agent._format_already_running_message(None)
+    assert "already running" in message
+    assert "still be starting up" in message

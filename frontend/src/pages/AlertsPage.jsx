@@ -201,211 +201,223 @@ export default function AlertsPage() {
 
   return (
     <SetupLockOverlay variant="compact">
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          padding: theme.space[7],
-          boxSizing: "border-box",
-        }}
-      >
+      {({ agentOfflineOnly }) => (
         <div
           style={{
-            maxWidth: 1200,
-            width: "100%",
-            margin: "0 auto",
             flex: 1,
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
+            padding: theme.space[7],
+            boxSizing: "border-box",
           }}
         >
           <div
             style={{
+              maxWidth: 1200,
+              width: "100%",
+              margin: "0 auto",
+              flex: 1,
+              minHeight: 0,
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              marginBottom: theme.space[6],
-              flexShrink: 0,
+              flexDirection: "column",
             }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: theme.color.textMuted,
-                  letterSpacing: "0.07em",
-                  textTransform: "uppercase",
-                  marginBottom: 9,
-                }}
-              >
-                Alerts
-              </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                <h1 style={{ fontSize: 34, letterSpacing: "-0.025em", margin: 0 }}>Active alerts</h1>
-                {!loading && (
-                  <Badge color={theme.color.accent}>
-                    {total.toLocaleString()} {total === 1 ? "alert" : "alerts"}
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <Button variant="secondary" onClick={handleExport}>
-              Export CSV
-            </Button>
-          </div>
-
-          <Card
-            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-            bodyStyle={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
           >
             <div
               style={{
                 display: "flex",
-                flexWrap: "wrap",
+                justifyContent: "space-between",
                 alignItems: "flex-end",
-                gap: theme.space[4],
-                padding: theme.space[4],
-                borderBottom: `1px solid ${theme.color.border}`,
+                marginBottom: theme.space[6],
                 flexShrink: 0,
               }}
             >
-              <div style={{ flex: "2 1 200px", minWidth: 180 }}>
-                <FieldLabel label="Search">
-                  <TextInput
-                    placeholder="Search alert title or description…"
-                    value={q}
-                    onChange={(e) => {
-                      setQ(e.target.value);
-                      setPage(0);
-                    }}
-                  />
-                </FieldLabel>
-              </div>
-              <div style={{ flex: "1 1 140px", minWidth: 140 }}>
-                <FieldLabel label="Status">
-                  <Select
-                    value={status}
-                    onChange={(e) => {
-                      setStatus(e.target.value);
-                      setPage(0);
-                    }}
-                  >
-                    <option value="">All</option>
-                    <option value="open">Open</option>
-                    <option value="ack">Ack</option>
-                    <option value="escalated">Escalated</option>
-                    <option value="resolved">Resolved</option>
-                  </Select>
-                </FieldLabel>
-              </div>
-              <div style={{ flex: "1 1 140px", minWidth: 140 }}>
-                <FieldLabel label="Severity">
-                  <Select
-                    value={severity}
-                    onChange={(e) => {
-                      setSeverity(e.target.value);
-                      setPage(0);
-                    }}
-                  >
-                    <option value="">All</option>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="ok">OK</option>
-                  </Select>
-                </FieldLabel>
-              </div>
-              <div style={{ flex: "1 1 200px", minWidth: 200 }}>
-                <FieldLabel label="Rule">
-                  <Select
-                    value={ruleId}
-                    onChange={(e) => {
-                      setRuleId(e.target.value);
-                      setPage(0);
-                    }}
-                  >
-                    <option value="">All rules</option>
-                    {rules.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </Select>
-                </FieldLabel>
-              </div>
-              <div style={{ paddingBottom: 9 }}>
-                <label
-                  style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}
+              <div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: theme.color.textMuted,
+                    letterSpacing: "0.07em",
+                    textTransform: "uppercase",
+                    marginBottom: 9,
+                  }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={mineOnly}
-                    onChange={(e) => {
-                      setMineOnly(e.target.checked);
-                      setPage(0);
-                    }}
-                  />
-                  Assigned to me
-                </label>
+                  Alerts
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                  <h1 style={{ fontSize: 34, letterSpacing: "-0.025em", margin: 0 }}>Active alerts</h1>
+                  {!loading && (
+                    <Badge color={theme.color.accent}>
+                      {total.toLocaleString()} {total === 1 ? "alert" : "alerts"}
+                    </Badge>
+                  )}
+                </div>
               </div>
+              <Button variant="secondary" onClick={handleExport}>
+                Export CSV
+              </Button>
             </div>
 
-            {selectedIds.size > 0 && (
+            {/* Same reasoning as LogsPage: the filter bar + table is the
+                "live" surface, dimmed while the agent is offline. */}
+            <Card
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                opacity: agentOfflineOnly ? 0.55 : 1,
+                filter: agentOfflineOnly ? "grayscale(65%)" : "none",
+                transition: "opacity 200ms ease-out, filter 200ms ease-out",
+              }}
+              bodyStyle={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+            >
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: theme.space[3],
-                  padding: theme.space[3],
-                  margin: theme.space[4],
-                  marginBottom: 0,
-                  background: "rgba(8, 145, 178, 0.08)",
-                  border: `1px solid ${theme.color.accent}`,
-                  borderRadius: theme.radius.md,
+                  flexWrap: "wrap",
+                  alignItems: "flex-end",
+                  gap: theme.space[4],
+                  padding: theme.space[4],
+                  borderBottom: `1px solid ${theme.color.border}`,
                   flexShrink: 0,
                 }}
               >
-                <span style={{ fontSize: 13 }}>{selectedIds.size} selected</span>
-                <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("ack")}>
-                  Ack
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("escalated")}>
-                  Escalate
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("resolved")}>
-                  Resolve
-                </Button>
+                <div style={{ flex: "2 1 200px", minWidth: 180 }}>
+                  <FieldLabel label="Search">
+                    <TextInput
+                      placeholder="Search alert title or description…"
+                      value={q}
+                      onChange={(e) => {
+                        setQ(e.target.value);
+                        setPage(0);
+                      }}
+                    />
+                  </FieldLabel>
+                </div>
+                <div style={{ flex: "1 1 140px", minWidth: 140 }}>
+                  <FieldLabel label="Status">
+                    <Select
+                      value={status}
+                      onChange={(e) => {
+                        setStatus(e.target.value);
+                        setPage(0);
+                      }}
+                    >
+                      <option value="">All</option>
+                      <option value="open">Open</option>
+                      <option value="ack">Ack</option>
+                      <option value="escalated">Escalated</option>
+                      <option value="resolved">Resolved</option>
+                    </Select>
+                  </FieldLabel>
+                </div>
+                <div style={{ flex: "1 1 140px", minWidth: 140 }}>
+                  <FieldLabel label="Severity">
+                    <Select
+                      value={severity}
+                      onChange={(e) => {
+                        setSeverity(e.target.value);
+                        setPage(0);
+                      }}
+                    >
+                      <option value="">All</option>
+                      <option value="critical">Critical</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="ok">OK</option>
+                    </Select>
+                  </FieldLabel>
+                </div>
+                <div style={{ flex: "1 1 200px", minWidth: 200 }}>
+                  <FieldLabel label="Rule">
+                    <Select
+                      value={ruleId}
+                      onChange={(e) => {
+                        setRuleId(e.target.value);
+                        setPage(0);
+                      }}
+                    >
+                      <option value="">All rules</option>
+                      {rules.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </FieldLabel>
+                </div>
+                <div style={{ paddingBottom: 9 }}>
+                  <label
+                    style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={mineOnly}
+                      onChange={(e) => {
+                        setMineOnly(e.target.checked);
+                        setPage(0);
+                      }}
+                    />
+                    Assigned to me
+                  </label>
+                </div>
               </div>
-            )}
 
-            {!loading && (
-              <Table
-                columns={columns}
-                rows={alerts}
-                rowKey={(row) => row.id}
-                emptyMessage="No alerts match these filters."
-                onRowClick={setSelected}
-                page={page}
-                pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-                onPageChange={setPage}
-              />
-            )}
-          </Card>
+              {selectedIds.size > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: theme.space[3],
+                    padding: theme.space[3],
+                    margin: theme.space[4],
+                    marginBottom: 0,
+                    background: "rgba(8, 145, 178, 0.08)",
+                    border: `1px solid ${theme.color.accent}`,
+                    borderRadius: theme.radius.md,
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ fontSize: 13 }}>{selectedIds.size} selected</span>
+                  <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("ack")}>
+                    Ack
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("escalated")}>
+                    Escalate
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("resolved")}>
+                    Resolve
+                  </Button>
+                </div>
+              )}
+
+              {!loading && (
+                <Table
+                  columns={columns}
+                  rows={alerts}
+                  rowKey={(row) => row.id}
+                  emptyMessage="No alerts match these filters."
+                  onRowClick={setSelected}
+                  page={page}
+                  pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+                  onPageChange={setPage}
+                />
+              )}
+            </Card>
+          </div>
+
+          <AlertDetailModal
+            open={!!selected}
+            onClose={() => setSelected(null)}
+            alert={selected}
+            ruleName={selected?.rule_id ? ruleNameById[selected.rule_id] : null}
+            eventType={selected?.rule_id ? ruleById[selected.rule_id]?.conditions?.event_type : null}
+            onUpdate={(payload) => selected && applyUpdate(selected.id, payload)}
+          />
         </div>
-
-        <AlertDetailModal
-          open={!!selected}
-          onClose={() => setSelected(null)}
-          alert={selected}
-          ruleName={selected?.rule_id ? ruleNameById[selected.rule_id] : null}
-          eventType={selected?.rule_id ? ruleById[selected.rule_id]?.conditions?.event_type : null}
-          onUpdate={(payload) => selected && applyUpdate(selected.id, payload)}
-        />
-      </div>
+      )}
     </SetupLockOverlay>
   );
 }

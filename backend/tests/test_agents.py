@@ -16,14 +16,47 @@ def test_create_requires_auth(client):
     assert response.status_code == 401
 
 
-def test_create_returns_key_once_and_pending(client, auth_headers):
+def test_create_returns_key_and_stays_visible_while_pending(client, auth_headers):
     created = _create_agent(client, auth_headers)
     assert created["agent"]["status"] == "pending"
     assert created["enrollment_key"].startswith("tpa_")
 
+    # Re-fetching (e.g. after closing the "deploy an agent" panel) still
+    # returns the same key while enrollment is pending and unexpired — no
+    # more one-shot "you only see it once".
     get_resp = client.get(f"/agents/{created['agent']['id']}", headers=auth_headers)
     assert get_resp.status_code == 200
-    assert "enrollment_key" not in get_resp.json()
+    assert get_resp.json()["enrollment_key"] == created["enrollment_key"]
+
+    list_resp = client.get("/agents", headers=auth_headers)
+    assert list_resp.json()[0]["enrollment_key"] == created["enrollment_key"]
+
+
+def test_enrollment_key_hidden_after_connect(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    client.post(f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": key})
+
+    get_resp = client.get(f"/agents/{agent_id}", headers=auth_headers)
+    assert get_resp.json()["status"] == "connected"
+    assert get_resp.json()["enrollment_key"] is None
+
+
+def test_enrollment_key_hidden_after_expiry(client, auth_headers, db_session):
+    created = _create_agent(client, auth_headers)
+    agent_id = created["agent"]["id"]
+
+    agent = db_session.get(Agent, uuid.UUID(agent_id))
+    agent.enrollment_expires_at = datetime.now(UTC) - timedelta(hours=1)
+    db_session.flush()
+
+    get_resp = client.get(f"/agents/{agent_id}", headers=auth_headers)
+    assert get_resp.json()["status"] == "pending"
+    assert get_resp.json()["enrollment_key"] is None
+
+    # Lazily wiped server-side too, not just gated in the response.
+    db_session.expire_all()
+    assert db_session.get(Agent, uuid.UUID(agent_id)).agent_key_encrypted is None
 
 
 def test_register_wrong_key_401(client, auth_headers):
@@ -195,6 +228,10 @@ def test_rotate_key_invalidates_old_and_issues_new(client, auth_headers):
     assert rotated.status_code == 200, rotated.text
     new_key = rotated.json()["enrollment_key"]
     assert new_key != old_key
+
+    # The re-displayable copy is rotated along with the hash used for auth.
+    get_resp = client.get(f"/agents/{agent_id}", headers=auth_headers)
+    assert get_resp.json()["enrollment_key"] == new_key
 
     old_key_attempt = client.post(
         f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": old_key}

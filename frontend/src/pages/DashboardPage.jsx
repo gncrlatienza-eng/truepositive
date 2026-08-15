@@ -179,15 +179,16 @@ export default function DashboardPage() {
                 onOpen={() => setOpenPanel({ type: "critical" })}
               />
 
-              {/* Agent-offline dims just the "live" elements — the KPI
-                  numbers/sparklines and the trend chart — since those imply
-                  real-time freshness that isn't true right now. Everything
-                  else below (severity/rule breakdowns, the alert queue, top
-                  sources) is a breakdown of records that are just as real
-                  whether or not the agent is currently connected, so those
-                  stay fully sharp. Still fully interactive either way —
-                  drilling into a KPI shows real historical data for that
-                  window regardless of current connection status. */}
+              {/* Everything below the status banner/critical strip is stale
+                  while the agent is offline — the KPIs/trend chart most
+                  obviously imply real-time freshness, but the severity/rule
+                  breakdowns, alert queue, and top sources are all reads of
+                  the same now-not-updating pipeline, so they get the same
+                  dim/grayscale treatment rather than looking falsely current
+                  next to a banner saying otherwise. Still fully interactive
+                  either way — drilling into a KPI or breakdown shows real
+                  historical data for that window regardless of current
+                  connection status. */}
               <div
                 style={{
                   display: "flex",
@@ -209,22 +210,22 @@ export default function DashboardPage() {
                   window={timeWindow}
                   onOpen={() => setOpenPanel({ type: "events" })}
                 />
-              </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <SeverityBreakdownCard
-                  bars={summary.severity_breakdown}
-                  onSelect={(severity) => setOpenPanel({ type: "severity", key: severity })}
-                />
-                <TopAlertTypesCard
-                  rows={summary.top_alert_types}
-                  onSelect={(ruleId) => ruleId && setOpenPanel({ type: "rule", key: ruleId })}
-                />
-              </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <SeverityBreakdownCard
+                    bars={summary.severity_breakdown}
+                    onSelect={(severity) => setOpenPanel({ type: "severity", key: severity })}
+                  />
+                  <TopAlertTypesCard
+                    rows={summary.top_alert_types}
+                    onSelect={(ruleId) => ruleId && setOpenPanel({ type: "rule", key: ruleId })}
+                  />
+                </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(430px, 1fr))", gap: 16 }}>
-                <AlertQueueCard items={summary.alert_queue} />
-                <TopSourcesCard rows={summary.top_sources} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(430px, 1fr))", gap: 16 }}>
+                  <AlertQueueCard items={summary.alert_queue} />
+                  <TopSourcesCard rows={summary.top_sources} />
+                </div>
               </div>
             </div>
           </div>

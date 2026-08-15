@@ -60,6 +60,12 @@ from pathlib import Path
 HEARTBEAT_INTERVAL_SECONDS = 30
 CONFIG_FILENAME = "agent_config.json"
 STATE_FILENAME = "agent_state.json"
+# What the "already running" dialog reads (see _show_already_running_message)
+# — the *only* way to see this agent's live status once it's running
+# silently in the background (auto-start's --silent mode has no window at
+# all, and a normal window closes to hidden, not destroyed) with nothing to
+# click past. Written on every status change by both run_gui and run_silent.
+STATUS_FILENAME = "agent_status.json"
 COLLECT_BATCH_LIMIT = 200
 # See run_silent — a few short retries so a fresh-boot network race doesn't
 # permanently fail the one registration attempt a silent login-time launch
@@ -173,6 +179,29 @@ def _save_state(state: dict) -> None:
         state_path.write_text(json.dumps(state), encoding="utf-8")
     except OSError:
         pass  # Non-fatal — worst case, the next cycle re-derives bookmarks.
+
+
+def _write_status(status: str, detail: str, agent_id: str) -> None:
+    payload = {
+        "status": status,
+        "detail": detail,
+        "agent_id": agent_id,
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+    }
+    try:
+        (_app_dir() / STATUS_FILENAME).write_text(json.dumps(payload), encoding="utf-8")
+    except OSError:
+        pass  # Non-fatal — worst case, the "already running" dialog just can't show it.
+
+
+def _read_status() -> dict | None:
+    status_path = _app_dir() / STATUS_FILENAME
+    if not status_path.exists():
+        return None
+    try:
+        return json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def _normalize_timestamp(raw: str) -> str:
@@ -505,16 +534,42 @@ def _acquire_single_instance_lock() -> bool:
         return True  # never block startup over a failed lock attempt
 
 
+# This dialog is the *only* thing a manual double-click can ever show once a
+# background instance already holds the lock (see _acquire_single_instance_lock)
+# — silent auto-start has no window to reopen, and a visible window that was
+# closed is only hidden, not destroyed, so relaunching never gets a fresh one
+# either. Without the running instance's own last-known status folded in
+# here, "already running" tells the user nothing about *why* the dashboard
+# might still show it offline (wrong URL, failed heartbeat, wrong agent ID,
+# ...) — exactly the gap that made this confusing to debug from the outside.
+def _format_already_running_message(status: dict | None) -> str:
+    base = "TruePositive Agent is already running in the background."
+    if not status:
+        return base + "\n\nNo status has been recorded yet — it may still be starting up."
+    lines = [
+        base,
+        "",
+        f"Status: {status.get('status', 'Unknown')}",
+    ]
+    if status.get("detail"):
+        lines.append(status["detail"])
+    lines.append("")
+    lines.append(f"Agent ID: {status.get('agent_id', 'unknown')}")
+    lines.append(f"Last updated: {status.get('updated_at', 'unknown')}")
+    return "\n".join(lines)
+
+
 def _show_already_running_message() -> None:
+    message = _format_already_running_message(_read_status())
     try:
         import tkinter as tk
         from tkinter import messagebox
 
         root = tk.Tk()
         root.withdraw()
-        messagebox.showinfo("TruePositive Agent", "TruePositive Agent is already running in the background.")
+        messagebox.showinfo("TruePositive Agent", message)
     except Exception:
-        print("TruePositive Agent is already running in the background.", file=sys.stderr)
+        print(message, file=sys.stderr)
 
 
 # The Run key above launches the exe with no arguments, so a CLI-args launch
@@ -605,6 +660,7 @@ def run_gui(base: str, agent_id: str, agent_key: str) -> None:
         root.after(0, _append)
 
     def set_status(status: str, detail: str) -> None:
+        _write_status(status, detail, agent_id)
         root.after(0, lambda: (status_var.set(status), detail_var.set(detail)))
 
     def worker() -> None:
@@ -671,12 +727,14 @@ def run_silent(base: str, agent_id: str, agent_key: str) -> None:
         try:
             agent = _post(f"{base}/agents/{agent_id}/register", agent_key, {"hostname": hostname})
             break
-        except AgentRequestError:
+        except AgentRequestError as exc:
+            _write_status("Connection failed", str(exc), agent_id)
             if attempt < REGISTER_RETRY_ATTEMPTS - 1:
                 time.sleep(REGISTER_RETRY_DELAY_SECONDS)
     if agent is None:
         return  # nothing more to do this run — the next login tries again
 
+    _write_status("Connected", f"{agent['hostname']} · registered", agent_id)
     _ensure_local_config_persisted(base, agent_id, agent_key)
     _ensure_windows_autostart(log_fn=lambda _msg: None)
 
@@ -684,9 +742,10 @@ def run_silent(base: str, agent_id: str, agent_key: str) -> None:
     while True:
         time.sleep(HEARTBEAT_INTERVAL_SECONDS)
         try:
-            _post(f"{base}/agents/{agent_id}/heartbeat", agent_key, {})
-        except AgentRequestError:
-            pass  # transient — the next cycle retries, same as run_gui's worker()
+            beat = _post(f"{base}/agents/{agent_id}/heartbeat", agent_key, {})
+            _write_status("Connected", f"last heartbeat {beat['last_seen_at']}", agent_id)
+        except AgentRequestError as exc:
+            _write_status("Heartbeat failed", str(exc), agent_id)
         _collect_and_ship(base, agent_id, agent_key, state, log_fn=lambda _msg: None)
 
 

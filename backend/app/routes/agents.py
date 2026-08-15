@@ -100,8 +100,8 @@ def download_windows_installer():
 # The dashboard's actual "Download agent" button: one file, pre-configured,
 # nothing else to place alongside it. Requires the caller to already hold
 # the real enrollment key (verified against the stored hash below) — the
-# backend never persists the raw key itself, only its bcrypt hash, so the
-# frontend hands back the same key it received once from POST /agents.
+# frontend hands back the same key it got from POST /agents or GET
+# /agents(/{id}) (Agent.enrollment_key, while still pending and unexpired).
 @router.post("/download/windows")
 def download_windows_agent_configured(
     payload: AgentDownloadRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)

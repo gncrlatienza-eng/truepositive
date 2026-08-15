@@ -16,9 +16,9 @@ class AgentRegisterRequest(BaseModel):
 
 
 class AgentDownloadRequest(BaseModel):
-    # The backend only ever stores the enrollment key's bcrypt hash, so the
-    # frontend hands the raw key it already has (from AgentCreatedResponse)
-    # back in here to be embedded in the downloaded binary.
+    # The frontend hands back the raw key it has (from AgentCreatedResponse,
+    # or from AgentOut.enrollment_key while still pending/unexpired) to be
+    # embedded in the downloaded binary — verified against the stored hash.
     url: str = Field(min_length=1, max_length=2048)
     id: uuid.UUID
     key: str = Field(min_length=1, max_length=255)
@@ -34,11 +34,19 @@ class AgentOut(BaseModel):
     hostname: str | None
     last_seen_at: datetime | None
     created_at: datetime
+    enrollment_expires_at: datetime | None
+    # Re-exposed (not just returned once) via Agent.enrollment_key while the
+    # agent is still pending and inside its 24h enrollment window, so closing
+    # the "deploy an agent" panel doesn't strand the user without a way to
+    # see the credentials again — null once connected, expired, or rotated.
+    enrollment_key: str | None = None
 
 
 class AgentCreatedResponse(BaseModel):
     agent: AgentOut
-    # Shown once — the backend only ever stores its bcrypt hash after this response.
+    # Also on `agent.enrollment_key` from here on (re-fetchable via GET/list
+    # while still pending and unexpired) — kept here too since this is the
+    # one response that's guaranteed to have it regardless of timing.
     enrollment_key: str
     enrollment_expires_at: datetime
 

@@ -442,11 +442,11 @@ export function SetupLockOverlay({ children, variant = "hero" }) {
         }}
         aria-hidden={covered ? true : undefined}
       >
-        {/* `children` can be a plain node (Logs/Alerts — nothing there needs
-            to know about agentOfflineOnly) or a render function receiving
-            { agentOfflineOnly }, for pages that want to visually de-emphasize
-            their own "live" elements (Overview's KPIs/charts) without a
-            second, duplicate useSetupStatus() poll to get that flag. */}
+        {/* `children` can be a plain node, or a render function receiving
+            { agentOfflineOnly } for pages that want to visually de-emphasize
+            their own "live" surface (Overview's KPIs/charts/breakdowns,
+            Logs'/Alerts' filter+table) without a second, duplicate
+            useSetupStatus() poll to get that flag. */}
         {typeof children === "function" ? children({ agentOfflineOnly }) : children}
       </div>
 

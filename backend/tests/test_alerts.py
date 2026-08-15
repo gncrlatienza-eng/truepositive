@@ -1,6 +1,9 @@
+from datetime import UTC, datetime
+
 from app.models.alert import Alert, AlertStatus
 from app.models.alert_rule import AlertRule
 from app.models.common import Severity
+from app.models.log import Log
 
 
 def _org_id(client, headers) -> str:
@@ -132,6 +135,12 @@ def test_cross_org_alert_404(client, auth_headers, second_org_headers, db_sessio
 
 def test_list_alerts_search_and_log_id_filter(client, auth_headers, db_session):
     org_id = _org_id(client, auth_headers)
+    now = datetime.now(UTC)
+    log_a = Log(org_id=org_id, timestamp=now, severity=Severity.HIGH, event_type="x", message="m1")
+    log_b = Log(org_id=org_id, timestamp=now, severity=Severity.MEDIUM, event_type="x", message="m2")
+    db_session.add_all([log_a, log_b])
+    db_session.flush()
+
     db_session.add_all(
         [
             Alert(
@@ -139,7 +148,7 @@ def test_list_alerts_search_and_log_id_filter(client, auth_headers, db_session):
                 severity=Severity.HIGH,
                 status=AlertStatus.OPEN,
                 title="Obfuscated PowerShell command",
-                log_id=101,
+                log_id=log_a.id,
             ),
             Alert(
                 org_id=org_id,
@@ -147,7 +156,7 @@ def test_list_alerts_search_and_log_id_filter(client, auth_headers, db_session):
                 status=AlertStatus.OPEN,
                 title="Port scan detected",
                 description="A network share object was accessed",
-                log_id=202,
+                log_id=log_b.id,
             ),
         ]
     )
@@ -161,7 +170,7 @@ def test_list_alerts_search_and_log_id_filter(client, auth_headers, db_session):
     assert by_description["total"] == 1
     assert by_description["items"][0]["title"] == "Port scan detected"
 
-    by_log_id = client.get("/alerts", params={"log_id": 202}, headers=auth_headers).json()
+    by_log_id = client.get("/alerts", params={"log_id": log_b.id}, headers=auth_headers).json()
     assert by_log_id["total"] == 1
     assert by_log_id["items"][0]["title"] == "Port scan detected"
 

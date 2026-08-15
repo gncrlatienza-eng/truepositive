@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
-import { api } from "../../utils/api";
 import { createAgent, getAgent } from "../../api/agents";
-import { downloadWindowsAgent, downloadWindowsInstaller } from "../../utils/agentDownload";
 import { formatFullTimestamp } from "../../utils/format";
+import AgentCredentialsCard from "./AgentCredentialsCard";
 
 const PLATFORMS = [
   { id: "windows", label: "Windows", detail: "Installer · 2016+" },
@@ -26,11 +25,9 @@ const POLL_MAX_ATTEMPTS = 100; // ~5 minutes
 // default — onboarding only ever deploys one agent per visit.
 export default function AgentEnrollmentPanel({ onAgentCreated, onConnected, allowReset = false }) {
   const [platform, setPlatform] = useState("windows");
-  const [revealKey, setRevealKey] = useState(false);
   const [agent, setAgent] = useState(null);
   const [enrollmentKey, setEnrollmentKey] = useState("");
   const [creating, setCreating] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
   const pollAttempts = useRef(0);
 
@@ -40,7 +37,6 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected, allo
     pollAttempts.current = 0;
     setAgent(null);
     setEnrollmentKey("");
-    setRevealKey(false);
     setError("");
   }
 
@@ -88,22 +84,6 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected, allo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected]);
 
-  const installCmd = agent
-    ? `python tp_agent.py --url ${api.defaults.baseURL} --id ${agent.id} --key ${enrollmentKey}`
-    : null;
-
-  async function handleDownloadWindowsAgent() {
-    setDownloading(true);
-    setError("");
-    try {
-      await downloadWindowsAgent({ id: agent.id, key: enrollmentKey });
-    } catch {
-      setError("Could not download the agent. Try again.");
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   return (
     <div>
       <ErrorBanner>{error}</ErrorBanner>
@@ -132,189 +112,26 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected, allo
         ))}
       </div>
 
-      <div
-        style={{
-          background: theme.color.surface,
-          border: `1px solid ${theme.color.border}`,
-          borderRadius: theme.radius.md,
-          padding: theme.space[6],
-          marginBottom: theme.space[5],
-        }}
-      >
+      {!agent ? (
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: theme.space[4],
+            background: theme.color.surface,
+            border: `1px solid ${theme.color.border}`,
+            borderRadius: theme.radius.md,
+            padding: theme.space[6],
+            marginBottom: theme.space[5],
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 18 }}>Enrollment credentials</h3>
-          {agent && (
-            <span
-              style={{
-                fontSize: 11,
-                color: theme.color.severity.high,
-                border: `1px solid ${theme.color.severity.high}`,
-                borderRadius: 999,
-                padding: "2px 8px",
-              }}
-            >
-              Expires in 24h
-            </span>
-          )}
-        </div>
-
-        {!agent ? (
+          <h3 style={{ margin: 0, marginBottom: theme.space[4], fontSize: 18 }}>Enrollment credentials</h3>
           <PrimaryButton type="button" style={{ width: "auto" }} disabled={creating} onClick={handleGenerate}>
             {creating ? "Generating…" : "Generate enrollment credentials"}
           </PrimaryButton>
-        ) : (
-          <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "120px minmax(0, 1fr) auto",
-                gap: theme.space[4],
-                alignItems: "center",
-                marginBottom: theme.space[4],
-              }}
-            >
-              <span style={{ fontSize: 14, color: theme.color.textMuted }}>Server URL</span>
-              <code
-                style={{
-                  fontFamily: theme.font.mono,
-                  fontSize: 14,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {api.defaults.baseURL}
-              </code>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
-                onClick={() => navigator.clipboard?.writeText(api.defaults.baseURL)}
-              >
-                Copy
-              </OutlineButton>
-
-              <span style={{ fontSize: 14, color: theme.color.textMuted }}>Agent ID</span>
-              <code
-                style={{
-                  fontFamily: theme.font.mono,
-                  fontSize: 14,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {agent.id}
-              </code>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
-                onClick={() => navigator.clipboard?.writeText(agent.id)}
-              >
-                Copy
-              </OutlineButton>
-
-              <span style={{ fontSize: 14, color: theme.color.textMuted }}>Enrollment key</span>
-              <code
-                style={{
-                  fontFamily: theme.font.mono,
-                  fontSize: 14,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {revealKey ? enrollmentKey : "•".repeat(20)}
-              </code>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
-                onClick={() => setRevealKey((v) => !v)}
-              >
-                {revealKey ? "Hide" : "Reveal"}
-              </OutlineButton>
-            </div>
-
-            {platform === "windows" ? (
-              <>
-                <PrimaryButton
-                  type="button"
-                  style={{ width: "auto", marginBottom: theme.space[3] }}
-                  onClick={downloadWindowsInstaller}
-                >
-                  Download agent installer for Windows
-                </PrimaryButton>
-                <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[3] }}>
-                  Runs a normal Windows installer — license terms, install location, Start Menu shortcut, and a proper
-                  uninstaller under Settings → Apps. After installing, open the app and paste in the Server URL, Agent
-                  ID, and Enrollment key above.
-                </div>
-                <details>
-                  <summary style={{ cursor: "pointer", fontSize: 13, color: theme.color.textMuted }}>
-                    Advanced: portable .exe or run manually via Python
-                  </summary>
-                  <div style={{ marginTop: theme.space[3] }}>
-                    <OutlineButton
-                      type="button"
-                      style={{ width: "auto", marginBottom: theme.space[3] }}
-                      disabled={downloading}
-                      onClick={handleDownloadWindowsAgent}
-                    >
-                      {downloading ? "Preparing download…" : "Download pre-configured .exe (no installer)"}
-                    </OutlineButton>
-                    <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[3] }}>
-                      Downloads <code>truepositive-agent.exe</code> directly, already configured for this agent —
-                      nothing to paste, but no Start Menu entry or uninstaller either.
-                    </div>
-                    <div
-                      style={{
-                        background: theme.color.background,
-                        border: `1px solid ${theme.color.border}`,
-                        borderRadius: theme.radius.sm,
-                        padding: theme.space[4],
-                        fontFamily: theme.font.mono,
-                        fontSize: 14,
-                        color: theme.color.text,
-                        overflowX: "auto",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      $ {installCmd}
-                    </div>
-                  </div>
-                </details>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[3] }}>
-                  A packaged installer for {platform} is a future release — run this manually for now:
-                </div>
-                <div
-                  style={{
-                    background: theme.color.background,
-                    border: `1px solid ${theme.color.border}`,
-                    borderRadius: theme.radius.sm,
-                    padding: theme.space[4],
-                    fontFamily: theme.font.mono,
-                    fontSize: 14,
-                    color: theme.color.text,
-                    overflowX: "auto",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  $ {installCmd}
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div style={{ marginBottom: theme.space[5] }}>
+          <AgentCredentialsCard agent={agent} enrollmentKey={enrollmentKey} platform={platform} />
+        </div>
+      )}
 
       {agent && (
         <div

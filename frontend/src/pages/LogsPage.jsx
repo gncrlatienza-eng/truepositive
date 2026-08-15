@@ -157,165 +157,179 @@ export default function LogsPage() {
 
   return (
     <SetupLockOverlay variant="compact">
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          padding: theme.space[7],
-          boxSizing: "border-box",
-        }}
-      >
+      {({ agentOfflineOnly }) => (
         <div
           style={{
-            maxWidth: 1200,
-            width: "100%",
-            margin: "0 auto",
             flex: 1,
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
+            padding: theme.space[7],
+            boxSizing: "border-box",
           }}
         >
           <div
             style={{
+              maxWidth: 1200,
+              width: "100%",
+              margin: "0 auto",
+              flex: 1,
+              minHeight: 0,
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              marginBottom: theme.space[6],
-              flexShrink: 0,
+              flexDirection: "column",
             }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: theme.color.textMuted,
-                  letterSpacing: "0.07em",
-                  textTransform: "uppercase",
-                  marginBottom: 9,
-                }}
-              >
-                Logs
-              </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                <h1 style={{ fontSize: 34, letterSpacing: "-0.025em", margin: 0 }}>Log search</h1>
-                {!loading && (
-                  <Badge color={theme.color.accent}>
-                    {total.toLocaleString()} {total === 1 ? "log" : "logs"}
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <Button variant="secondary" onClick={handleExport}>
-              Export CSV
-            </Button>
-          </div>
-
-          <Card
-            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
-            bodyStyle={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
           >
             <div
               style={{
                 display: "flex",
-                flexWrap: "wrap",
-                gap: theme.space[4],
-                padding: theme.space[4],
-                borderBottom: `1px solid ${theme.color.border}`,
+                justifyContent: "space-between",
+                alignItems: "flex-end",
+                marginBottom: theme.space[6],
                 flexShrink: 0,
               }}
             >
-              <div style={{ flex: "2 1 220px", minWidth: 200 }}>
-                <FieldLabel label="Search">
-                  <TextInput
-                    placeholder="Search message or event type…"
-                    value={q}
-                    onChange={(e) => {
-                      setQ(e.target.value);
-                      setPage(0);
-                    }}
-                  />
-                </FieldLabel>
+              <div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: theme.color.textMuted,
+                    letterSpacing: "0.07em",
+                    textTransform: "uppercase",
+                    marginBottom: 9,
+                  }}
+                >
+                  Logs
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                  <h1 style={{ fontSize: 34, letterSpacing: "-0.025em", margin: 0 }}>Log search</h1>
+                  {!loading && (
+                    <Badge color={theme.color.accent}>
+                      {total.toLocaleString()} {total === 1 ? "log" : "logs"}
+                    </Badge>
+                  )}
+                </div>
               </div>
-              <div style={{ flex: "1 1 140px", minWidth: 140 }}>
-                <FieldLabel label="Severity">
-                  <Select
-                    value={severity}
-                    onChange={(e) => {
-                      setSeverity(e.target.value);
-                      setPage(0);
-                    }}
-                  >
-                    <option value="">All</option>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="ok">OK</option>
-                  </Select>
-                </FieldLabel>
-              </div>
-              <div style={{ flex: "1 1 160px", minWidth: 160 }}>
-                <FieldLabel label="Source">
-                  <Select
-                    value={sourceId}
-                    onChange={(e) => {
-                      setSourceId(e.target.value);
-                      setPage(0);
-                    }}
-                  >
-                    <option value="">All sources</option>
-                    {sources.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </Select>
-                </FieldLabel>
-              </div>
-              <div style={{ flex: "1 1 140px", minWidth: 140 }}>
-                <FieldLabel label="Window">
-                  <Select
-                    value={hourFilter}
-                    onChange={(e) => {
-                      setHourFilter(e.target.value);
-                      setPage(0);
-                    }}
-                  >
-                    {HOUR_FILTERS.map((h) => (
-                      <option key={h.key} value={h.key}>
-                        {h.label}
-                      </option>
-                    ))}
-                  </Select>
-                </FieldLabel>
-              </div>
+              <Button variant="secondary" onClick={handleExport}>
+                Export CSV
+              </Button>
             </div>
 
-            {!loading && (
-              <Table
-                columns={columns}
-                rows={logs}
-                rowKey={(row) => row.id}
-                emptyMessage="No logs match these filters."
-                onRowClick={setSelectedLog}
-                page={page}
-                pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-                onPageChange={setPage}
-              />
-            )}
-          </Card>
-        </div>
+            {/* The search/filter bar + table is the "live" surface here —
+                same reasoning as Overview's KPI/chart block — dimmed while
+                the agent is offline so it doesn't look like a genuinely
+                current feed when nothing new can be arriving. */}
+            <Card
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                opacity: agentOfflineOnly ? 0.55 : 1,
+                filter: agentOfflineOnly ? "grayscale(65%)" : "none",
+                transition: "opacity 200ms ease-out, filter 200ms ease-out",
+              }}
+              bodyStyle={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: theme.space[4],
+                  padding: theme.space[4],
+                  borderBottom: `1px solid ${theme.color.border}`,
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ flex: "2 1 220px", minWidth: 200 }}>
+                  <FieldLabel label="Search">
+                    <TextInput
+                      placeholder="Search message or event type…"
+                      value={q}
+                      onChange={(e) => {
+                        setQ(e.target.value);
+                        setPage(0);
+                      }}
+                    />
+                  </FieldLabel>
+                </div>
+                <div style={{ flex: "1 1 140px", minWidth: 140 }}>
+                  <FieldLabel label="Severity">
+                    <Select
+                      value={severity}
+                      onChange={(e) => {
+                        setSeverity(e.target.value);
+                        setPage(0);
+                      }}
+                    >
+                      <option value="">All</option>
+                      <option value="critical">Critical</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="ok">OK</option>
+                    </Select>
+                  </FieldLabel>
+                </div>
+                <div style={{ flex: "1 1 160px", minWidth: 160 }}>
+                  <FieldLabel label="Source">
+                    <Select
+                      value={sourceId}
+                      onChange={(e) => {
+                        setSourceId(e.target.value);
+                        setPage(0);
+                      }}
+                    >
+                      <option value="">All sources</option>
+                      {sources.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </FieldLabel>
+                </div>
+                <div style={{ flex: "1 1 140px", minWidth: 140 }}>
+                  <FieldLabel label="Window">
+                    <Select
+                      value={hourFilter}
+                      onChange={(e) => {
+                        setHourFilter(e.target.value);
+                        setPage(0);
+                      }}
+                    >
+                      {HOUR_FILTERS.map((h) => (
+                        <option key={h.key} value={h.key}>
+                          {h.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FieldLabel>
+                </div>
+              </div>
 
-        <LogDetailModal
-          open={!!selectedLog}
-          onClose={() => setSelectedLog(null)}
-          log={selectedLog}
-          sourceName={selectedLog && sourceNameById[selectedLog.source_id]}
-        />
-      </div>
+              {!loading && (
+                <Table
+                  columns={columns}
+                  rows={logs}
+                  rowKey={(row) => row.id}
+                  emptyMessage="No logs match these filters."
+                  onRowClick={setSelectedLog}
+                  page={page}
+                  pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+                  onPageChange={setPage}
+                />
+              )}
+            </Card>
+          </div>
+
+          <LogDetailModal
+            open={!!selectedLog}
+            onClose={() => setSelectedLog(null)}
+            log={selectedLog}
+            sourceName={selectedLog && sourceNameById[selectedLog.source_id]}
+          />
+        </div>
+      )}
     </SetupLockOverlay>
   );
 }
