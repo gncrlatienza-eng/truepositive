@@ -1,8 +1,8 @@
 import { theme } from "../styles/theme";
 
-// Shared stub for sidebar sections with no real content yet (Logs/Alerts/
-// Incidents/Reports/Intel — Sprints 5-7). Keeps every sidebar item routing
-// and highlighting correctly per this sprint's AC without building next
+// Shared stub for sidebar sections with no real content yet (Incidents —
+// Sprint 6; Reports/Intel — Sprint 8). Keeps every sidebar item routing and
+// highlighting correctly per this sprint's AC without building next
 // sprints' pages early.
 export default function ComingSoonPage({ title, sprint }) {
   return (

@@ -3,6 +3,7 @@ import { theme } from "../../styles/theme";
 import { Field, Select, TextInput, OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import Modal from "../common/Modal";
 import { createSource, updateSource } from "../../api/sources";
+import LocalSourcePicker from "./LocalSourcePicker";
 
 const EMPTY = {
   name: "",
@@ -17,8 +18,9 @@ const EMPTY = {
   credential: "",
 };
 
-export default function ConnectSourceModal({ open, onClose, onSaved, agents, source }) {
+export default function ConnectSourceModal({ open, onClose, onSaved, agents, sources = [], source }) {
   const [form, setForm] = useState(EMPTY);
+  const [localSources, setLocalSources] = useState([]);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const isEdit = !!source;
@@ -41,6 +43,7 @@ export default function ConnectSourceModal({ open, onClose, onSaved, agents, sou
       });
     } else {
       setForm(EMPTY);
+      setLocalSources([]);
     }
   }, [open, source]);
 
@@ -48,27 +51,84 @@ export default function ConnectSourceModal({ open, onClose, onSaved, agents, sou
     setForm((f) => ({ ...f, [field]: value }));
   }
 
+  const selectedAgent = agents.find((a) => a.id === form.agentId);
+  const selectedPlatform = selectedAgent?.platform || "windows";
+  // What's already configured for this agent, so the picker doesn't offer a
+  // duplicate of something already connected.
+  const existingPaths = sources
+    .filter((s) => s.type === "local" && (s.agent_id || "") === (form.agentId || ""))
+    .map((s) => s.path)
+    .filter(Boolean);
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      const base = { name: form.name, tags: [] };
-      const payload =
-        form.mode === "local"
-          ? { ...base, type: "local", agent_id: form.agentId || null, path: form.path || null }
-          : {
-              ...base,
-              type: "remote",
-              protocol: form.protocol,
-              host: form.host,
-              port: Number(form.port) || 22,
-              username: form.username,
-              ...(form.credential ? { credential_type: form.credentialType, credential: form.credential } : {}),
-            };
-
-      const saved = isEdit ? await updateSource(source.id, payload) : await createSource(payload);
-      onSaved(saved);
+      if (isEdit) {
+        const base = { name: form.name, tags: [] };
+        const payload =
+          form.mode === "local"
+            ? { ...base, type: "local", agent_id: form.agentId || null, path: form.path || null }
+            : {
+                ...base,
+                type: "remote",
+                protocol: form.protocol,
+                host: form.host,
+                port: Number(form.port) || 22,
+                username: form.username,
+                ...(form.credential ? { credential_type: form.credentialType, credential: form.credential } : {}),
+              };
+        const saved = await updateSource(source.id, payload);
+        onSaved(saved);
+      } else if (form.mode === "local") {
+        // Each source is its own request — if one fails partway through,
+        // the ones already created stay live (onSaved already merged them
+        // into the parent's list) but must come out of `localSources`, or a
+        // retry would resubmit and duplicate them.
+        const remaining = [...localSources];
+        let createdCount = 0;
+        try {
+          while (remaining.length > 0) {
+            const s = remaining[0];
+            const saved = await createSource({
+              name: s.name,
+              type: "local",
+              agent_id: form.agentId || null,
+              path: s.path,
+              tags: [],
+            });
+            onSaved(saved);
+            createdCount += 1;
+            remaining.shift();
+          }
+        } catch (err) {
+          setLocalSources(remaining);
+          const detail = err.response?.data?.detail;
+          const detailText = Array.isArray(detail)
+            ? detail.map((d) => d.msg).join(" ")
+            : detail || "Check the form and try again.";
+          setError(
+            createdCount > 0
+              ? `Connected ${createdCount} of ${createdCount + remaining.length} source(s) so far. ${detailText}`
+              : detailText,
+          );
+          return;
+        }
+      } else {
+        const saved = await createSource({
+          name: form.name,
+          type: "remote",
+          protocol: form.protocol,
+          host: form.host,
+          port: Number(form.port) || 22,
+          username: form.username,
+          credential_type: form.credentialType,
+          credential: form.credential,
+          tags: [],
+        });
+        onSaved(saved);
+      }
       onClose();
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -83,9 +143,11 @@ export default function ConnectSourceModal({ open, onClose, onSaved, agents, sou
       <form onSubmit={handleSubmit}>
         <ErrorBanner>{error}</ErrorBanner>
 
-        <Field label="Name">
-          <TextInput value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Sysmon" required />
-        </Field>
+        {(isEdit || form.mode === "remote") && (
+          <Field label="Name">
+            <TextInput value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Sysmon" required />
+          </Field>
+        )}
 
         <div style={{ display: "flex", gap: theme.space[3], marginBottom: theme.space[4] }}>
           {["local", "remote"].map((m) => (
@@ -123,13 +185,22 @@ export default function ConnectSourceModal({ open, onClose, onSaved, agents, sou
                 ))}
               </Select>
             </Field>
-            <Field label="Path">
-              <TextInput
-                value={form.path}
-                onChange={(e) => set("path", e.target.value)}
-                placeholder="Microsoft-Windows-Sysmon/Operational"
+            {isEdit ? (
+              <Field label="Path">
+                <TextInput
+                  value={form.path}
+                  onChange={(e) => set("path", e.target.value)}
+                  placeholder="Microsoft-Windows-Sysmon/Operational"
+                />
+              </Field>
+            ) : (
+              <LocalSourcePicker
+                key={`${selectedPlatform}-${form.agentId}`}
+                platform={selectedPlatform}
+                existingPaths={existingPaths}
+                onChange={setLocalSources}
               />
-            </Field>
+            )}
           </>
         ) : (
           <>
@@ -193,8 +264,18 @@ export default function ConnectSourceModal({ open, onClose, onSaved, agents, sou
           <OutlineButton type="button" style={{ width: "auto" }} onClick={onClose}>
             Cancel
           </OutlineButton>
-          <PrimaryButton type="submit" style={{ width: "auto" }} disabled={submitting}>
-            {submitting ? "Saving…" : isEdit ? "Save changes" : "Connect source"}
+          <PrimaryButton
+            type="submit"
+            style={{ width: "auto" }}
+            disabled={submitting || (!isEdit && form.mode === "local" && localSources.length === 0)}
+          >
+            {submitting
+              ? "Saving…"
+              : isEdit
+                ? "Save changes"
+                : form.mode === "local" && localSources.length > 1
+                  ? "Connect sources"
+                  : "Connect source"}
           </PrimaryButton>
         </div>
       </form>

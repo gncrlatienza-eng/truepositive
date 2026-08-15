@@ -45,13 +45,21 @@ Via Docker, run these inside the backend container: `docker-compose exec backend
 
 `DELETE /agents/{id}` removes an agent — any `log_sources` still pointing at it get `agent_id` set to `NULL` rather than being deleted too (a source someone configured is worth keeping even if the agent behind it never connected or gets replaced). Exists specifically so re-generating enrollment credentials without ever connecting (e.g. testing, or Settings → Sources → "Deploy agent" opened more than once) doesn't leave an ever-growing pile of dead `pending` agents with no way to clean them up.
 
-**Log sources** (`/logs/sources`): CRUD with org scoping. Remote (SSH) credentials are Fernet-encrypted at rest (`app/utils/crypto.py`) before storage — no endpoint or schema ever returns the decrypted plaintext, only a derived `has_credential: bool`. WinRM/Syslog protocols and Kerberos auth are accepted by the schema's enums but rejected with 422 — SSH + (key or password) is the only real path this sprint.
+**Log sources** (`/logs/sources`): CRUD with org scoping. Remote (SSH) credentials are Fernet-encrypted at rest (`app/utils/crypto.py`) before storage — no endpoint or schema ever returns the decrypted plaintext, only a derived `has_credential: bool`. WinRM/Syslog protocols and Kerberos auth are accepted by the schema's enums but rejected with 422 — SSH + (key or password) is the only real path so far.
 
-**Whitelist** (`/settings/whitelist`): CRUD, `UNIQUE(org_id, type, value)` → 409 on duplicate. `whitelist_service.exclude_whitelisted()` is a reusable query-layer filter meant for Sprint 5's future log/alert list queries — see `tests/test_whitelist.py` for a proof against real `logs` rows, since no log-listing endpoint exists yet.
+**Whitelist** (`/settings/whitelist`): CRUD, `UNIQUE(org_id, type, value)` → 409 on duplicate. `whitelist_service.exclude_whitelisted()` is a reusable query-layer filter — see `tests/test_whitelist.py` for a proof against real `logs` rows, and note it isn't wired into `GET /logs`/`GET /alerts` yet (whitelisted-entry filtering on those list endpoints is unscheduled, not a bug).
+
+## Logs & Alerts (Sprint 5)
+
+**Ingestion**: `POST /agents/{id}/logs` (agent-key authed, body `{logs: [...]}`) is what an agent actually calls to ship collected data — validates every `source_id` in the batch belongs to that agent (`log_sources.agent_id`), writes the `Log` rows, then evaluates every enabled `AlertRule` for the org against each one (`log_service._rule_matches` — a small structured condition schema, `event_type` exact-match + `min_severity` threshold, not free-form JSONB), creating an `Alert` per match. Synchronous, no scheduler — same philosophy as the agent-staleness sweep. `GET /agents/{id}/sources` is the paired read: the agent's own view of its currently-assigned *local* sources (no credential fields — remote/SSH sources aren't collected by the reference agent).
+
+**Query**: `GET /logs` (search `q` over message+event_type, filters for source/severity/event_type/since/until, sort, pagination — `{items, total, limit, offset}`, the first endpoint here to need real pagination) + `GET /logs/{log_id:int}` + `GET /logs/export.csv` (same filters, capped at 5,000 rows).
+
+**Rules + alerts**: `GET/POST/PATCH/DELETE /alerts/rules` (registered ahead of `/alerts/{alert_id}` — same route-ordering discipline as `/logs/sources`), `GET/PATCH /alerts` (status/severity/rule/assignee filters; `PATCH` handles ack/escalate/resolve/reopen via `status`, reassignment via `assignee_id` validated against the same org). Deleting a rule detaches rather than cascade-deletes its already-created alerts. No dedicated `acknowledged_at`/`escalated_at` columns — reuses `status` + `updated_at`.
 
 ## Dashboard
 
-`/dashboard/summary?window=24h|7d|30d` and nine `/dashboard/panels/*` endpoints (one per drill-in panel type: critical, ingestion, events, alerts, triage, risk, severity/{severity}, rule/{rule_id}, event-type/{event_type}) — all real SQL aggregation over `logs`/`alerts`/`agents`, org-scoped, no fabricated analytics. Since nothing writes to `logs`/`alerts` yet outside this sprint's seed script (real ingestion is Sprint 5), a fresh org legitimately sees all-zero/empty responses — that's the correct, honest behavior, not a bug. Risk score reuses the UI mockup's own documented weighted formula (Critical×4, High×2, Medium×1, OK×0.3). Agent online/offline counts are computed directly from `last_seen_at` (`agent_service.count_online`) rather than trusting the `status` column, since it's only swept on read. The Alert Queue response (`AlertQueueItem`) has no ack/escalate fields at all — those mutations don't exist until Sprint 5.
+`/dashboard/summary?window=24h|7d|30d` and nine `/dashboard/panels/*` endpoints (one per drill-in panel type: critical, ingestion, events, alerts, triage, risk, severity/{severity}, rule/{rule_id}, event-type/{event_type}) — all real SQL aggregation over `logs`/`alerts`/`agents`, org-scoped, no fabricated analytics. As of Sprint 5 these numbers can reflect real agent-shipped data, not just the seed script below. Risk score reuses the UI mockup's own documented weighted formula (Critical×4, High×2, Medium×1, OK×0.3). Agent online/offline counts are computed directly from `last_seen_at` (`agent_service.count_online`) rather than trusting the `status` column, since it's only swept on read.
 
 ### Local dev seed data
 
@@ -105,4 +113,4 @@ backend/
     └── middleware/                 Auth, request logging, error handling
 ```
 
-`auth`, `agents`, `logs` (sources), `settings` (whitelist), and `dashboard` now have real endpoints (see the sections above). `alerts` and `reports` still ship as stubs (one placeholder endpoint each) wired into `main.py` — real logic lands sprint-by-sprint per [`../docs/SPRINT_PLAN.md`](../docs/SPRINT_PLAN.md).
+`auth`, `agents`, `logs`, `alerts`, `settings` (whitelist), and `dashboard` now have real endpoints (see the sections above). `reports` still ships as a stub (one placeholder endpoint) wired into `main.py` — real logic lands sprint-by-sprint per [`../docs/SPRINT_PLAN.md`](../docs/SPRINT_PLAN.md).

@@ -12,20 +12,23 @@ export function BigStat({ value, label, color }) {
   );
 }
 
-export function Section({ title, children }) {
+export function Section({ title, hint, children }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {title && (
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: theme.color.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          {title}
+        <div>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: theme.color.textMuted,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+            }}
+          >
+            {title}
+          </div>
+          {hint && <div style={{ fontSize: 11, color: theme.color.textFaint, marginTop: 2 }}>{hint}</div>}
         </div>
       )}
       {children}

@@ -3,10 +3,11 @@ import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { api } from "../../utils/api";
 import { createAgent, getAgent } from "../../api/agents";
-import { downloadWindowsAgent } from "../../utils/agentDownload";
+import { downloadWindowsAgent, downloadWindowsInstaller } from "../../utils/agentDownload";
+import { formatFullTimestamp } from "../../utils/format";
 
 const PLATFORMS = [
-  { id: "windows", label: "Windows", detail: "MSI · 2016+" },
+  { id: "windows", label: "Windows", detail: "Installer · 2016+" },
   { id: "linux", label: "Linux", detail: "deb · rpm" },
   { id: "docker", label: "Docker", detail: "compose" },
   { id: "kubernetes", label: "Kubernetes", detail: "DaemonSet" },
@@ -19,7 +20,11 @@ const POLL_MAX_ATTEMPTS = 100; // ~5 minutes
 // by onboarding step 2 and the Settings -> Sources "Deploy agent" modal, so
 // people who skip agent setup during onboarding aren't stuck without a way
 // back in.
-export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
+// `allowReset` shows a "Deploy another agent" action once credentials exist,
+// so a persistently-embedded panel (Settings -> Sources) can be reused for a
+// second/third agent without navigating away and back to remount it. Off by
+// default — onboarding only ever deploys one agent per visit.
+export default function AgentEnrollmentPanel({ onAgentCreated, onConnected, allowReset = false }) {
   const [platform, setPlatform] = useState("windows");
   const [revealKey, setRevealKey] = useState(false);
   const [agent, setAgent] = useState(null);
@@ -31,6 +36,14 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
 
   const connected = agent?.status === "connected";
 
+  function handleReset() {
+    pollAttempts.current = 0;
+    setAgent(null);
+    setEnrollmentKey("");
+    setRevealKey(false);
+    setError("");
+  }
+
   async function handleGenerate() {
     setError("");
     setCreating(true);
@@ -38,7 +51,7 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
       const created = await createAgent({ name: `${platform}-agent`, platform });
       setAgent(created.agent);
       setEnrollmentKey(created.enrollment_key);
-      onAgentCreated?.(created.agent.id);
+      onAgentCreated?.(created.agent);
     } catch (err) {
       setError(err.response?.data?.detail || "Could not generate credentials. Try again.");
     } finally {
@@ -124,7 +137,7 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
           background: theme.color.surface,
           border: `1px solid ${theme.color.border}`,
           borderRadius: theme.radius.md,
-          padding: theme.space[5],
+          padding: theme.space[6],
           marginBottom: theme.space[5],
         }}
       >
@@ -158,9 +171,47 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
           </PrimaryButton>
         ) : (
           <>
-            <div style={{ display: "flex", gap: theme.space[3], marginBottom: theme.space[3], alignItems: "center" }}>
-              <span style={{ fontSize: 14, color: theme.color.textMuted, width: 140 }}>Agent ID</span>
-              <code style={{ fontFamily: theme.font.mono, fontSize: 14 }}>{agent.id}</code>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "120px minmax(0, 1fr) auto",
+                gap: theme.space[4],
+                alignItems: "center",
+                marginBottom: theme.space[4],
+              }}
+            >
+              <span style={{ fontSize: 14, color: theme.color.textMuted }}>Server URL</span>
+              <code
+                style={{
+                  fontFamily: theme.font.mono,
+                  fontSize: 14,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {api.defaults.baseURL}
+              </code>
+              <OutlineButton
+                type="button"
+                style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
+                onClick={() => navigator.clipboard?.writeText(api.defaults.baseURL)}
+              >
+                Copy
+              </OutlineButton>
+
+              <span style={{ fontSize: 14, color: theme.color.textMuted }}>Agent ID</span>
+              <code
+                style={{
+                  fontFamily: theme.font.mono,
+                  fontSize: 14,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {agent.id}
+              </code>
               <OutlineButton
                 type="button"
                 style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
@@ -168,11 +219,17 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
               >
                 Copy
               </OutlineButton>
-            </div>
 
-            <div style={{ display: "flex", gap: theme.space[3], marginBottom: theme.space[4], alignItems: "center" }}>
-              <span style={{ fontSize: 14, color: theme.color.textMuted, width: 140 }}>Enrollment key</span>
-              <code style={{ fontFamily: theme.font.mono, fontSize: 14 }}>
+              <span style={{ fontSize: 14, color: theme.color.textMuted }}>Enrollment key</span>
+              <code
+                style={{
+                  fontFamily: theme.font.mono,
+                  fontSize: 14,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {revealKey ? enrollmentKey : "•".repeat(20)}
               </code>
               <OutlineButton
@@ -189,33 +246,47 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
                 <PrimaryButton
                   type="button"
                   style={{ width: "auto", marginBottom: theme.space[3] }}
-                  disabled={downloading}
-                  onClick={handleDownloadWindowsAgent}
+                  onClick={downloadWindowsInstaller}
                 >
-                  {downloading ? "Preparing download…" : "Download agent for Windows"}
+                  Download agent installer for Windows
                 </PrimaryButton>
                 <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[3] }}>
-                  Downloads <code>tp_agent.exe</code>, pre-configured for this agent. Double-click it. Nothing to type,
-                  nothing else to download.
+                  Runs a normal Windows installer — license terms, install location, Start Menu shortcut, and a proper
+                  uninstaller under Settings → Apps. After installing, open the app and paste in the Server URL, Agent
+                  ID, and Enrollment key above.
                 </div>
                 <details>
                   <summary style={{ cursor: "pointer", fontSize: 13, color: theme.color.textMuted }}>
-                    Advanced: run manually via Python instead
+                    Advanced: portable .exe or run manually via Python
                   </summary>
-                  <div
-                    style={{
-                      background: theme.color.background,
-                      border: `1px solid ${theme.color.border}`,
-                      borderRadius: theme.radius.sm,
-                      padding: theme.space[4],
-                      fontFamily: theme.font.mono,
-                      fontSize: 14,
-                      color: theme.color.text,
-                      marginTop: theme.space[3],
-                      overflowX: "auto",
-                    }}
-                  >
-                    $ {installCmd}
+                  <div style={{ marginTop: theme.space[3] }}>
+                    <OutlineButton
+                      type="button"
+                      style={{ width: "auto", marginBottom: theme.space[3] }}
+                      disabled={downloading}
+                      onClick={handleDownloadWindowsAgent}
+                    >
+                      {downloading ? "Preparing download…" : "Download pre-configured .exe (no installer)"}
+                    </OutlineButton>
+                    <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[3] }}>
+                      Downloads <code>truepositive-agent.exe</code> directly, already configured for this agent —
+                      nothing to paste, but no Start Menu entry or uninstaller either.
+                    </div>
+                    <div
+                      style={{
+                        background: theme.color.background,
+                        border: `1px solid ${theme.color.border}`,
+                        borderRadius: theme.radius.sm,
+                        padding: theme.space[4],
+                        fontFamily: theme.font.mono,
+                        fontSize: 14,
+                        color: theme.color.text,
+                        overflowX: "auto",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      $ {installCmd}
+                    </div>
                   </div>
                 </details>
               </>
@@ -234,6 +305,7 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
                     fontSize: 14,
                     color: theme.color.text,
                     overflowX: "auto",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   $ {installCmd}
@@ -276,13 +348,18 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected }) {
               }}
             >
               {connected
-                ? `${agent.hostname} · last heartbeat ${agent.last_seen_at ? new Date(agent.last_seen_at).toLocaleTimeString() : "just now"}`
+                ? `${agent.hostname} · last heartbeat ${agent.last_seen_at ? formatFullTimestamp(agent.last_seen_at) : "just now"}`
                 : "Run the command above. The agent checks in within about 30 seconds."}
             </div>
           </div>
           {!connected && (
             <OutlineButton type="button" style={{ width: "auto" }} onClick={refetchAgent}>
               Verify connection
+            </OutlineButton>
+          )}
+          {allowReset && (
+            <OutlineButton type="button" style={{ width: "auto" }} onClick={handleReset}>
+              Deploy another agent
             </OutlineButton>
           )}
         </div>

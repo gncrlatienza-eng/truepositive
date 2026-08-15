@@ -52,9 +52,9 @@ class KpiCard(BaseModel):
     key: str
     label: str
     value: str
-    delta: str | None
+    delta: float | None  # pct change vs the previous equal-length period; frontend picks direction/color per key
     delta_color: str | None
-    sparkline: list[float]
+    sparkline: list[HourBar]  # reuses HourBar's (hour_label, count) shape so the chart can show a real axis
 
 
 class StatusBanner(BaseModel):

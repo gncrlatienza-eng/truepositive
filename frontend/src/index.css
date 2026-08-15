@@ -26,6 +26,41 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Thin, theme-matching scrollbars everywhere — the default OS/browser
+   scrollbar chrome (wide, light-on-white on most platforms) stood out
+   against this dark UI on every scrollable container: the Overview page,
+   the drill-down drawer, Settings, etc. Defined once globally rather than
+   per-component since every one of them just uses plain `overflow: auto`. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2d3748 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #2d3748;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 h1,
 h2,
 h3 {
@@ -224,9 +259,14 @@ input[type="checkbox"] {
   gap: 16px;
 }
 
+/* auto-fit (not a fixed repeat(4, ...)) so this reflows based on its own
+   container's width, not the viewport's — needed since AgentEnrollmentPanel
+   renders this both in a wide onboarding column and a narrow Settings
+   sidebar (Settings -> Sources' "Install an agent" panel), and a viewport
+   media query can't tell those two apart. */
 .tp-grid-4 {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 12px;
 }
 
@@ -236,9 +276,6 @@ input[type="checkbox"] {
   }
   .tp-grid-sidebar {
     grid-template-columns: 1fr;
-  }
-  .tp-grid-4 {
-    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -277,6 +314,247 @@ input[type="checkbox"] {
 
 .tp-modal-card {
   animation: tp-pop 0.15s ease;
+}
+
+/* Chart draw-in (DonutChart, RadialGauge) — reuses the same pop-in keyframe
+   as modals for a consistent "just appeared" feel across the app. */
+.tp-chart-in {
+  animation: tp-pop 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-chart-in {
+    animation: none;
+  }
+}
+
+/* Custom chart tooltip (chartSetup.js's externalTooltipHandler) — a real
+   positioned DOM element with a CSS border-triangle arrow, ported from
+   Pi-hole's own dashboard (.chartjs-tooltip/.arrow in their pi-hole.css)
+   rather than Chart.js's built-in canvas tooltip. Class carries the
+   computed placement, e.g. "tp-chart-tooltip center bottom" — see
+   externalTooltipHandler for how xAlign/yAlign map to these class names. */
+.tp-chart-tooltip {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 30;
+  background: rgba(10, 12, 18, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  transition: opacity 120ms ease;
+}
+
+.tp-chart-tooltip-title {
+  color: #9ca3af;
+}
+
+.tp-chart-tooltip-line {
+  color: #e8eaed;
+  font-weight: 700;
+}
+
+.tp-chart-tooltip-arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+}
+
+/* Top/bottom: externalTooltipHandler sets the arrow's `left` in px itself
+   (tracking the real caret even after the box got clamped inside its
+   card), so these rules only handle the triangle's shape and which edge
+   it sits on. */
+.tp-chart-tooltip.top .tp-chart-tooltip-arrow {
+  bottom: 100%;
+  border-top: none;
+  border-bottom-color: rgba(10, 12, 18, 0.92);
+}
+
+.tp-chart-tooltip.bottom .tp-chart-tooltip-arrow {
+  top: 100%;
+  border-bottom: none;
+  border-top-color: rgba(10, 12, 18, 0.92);
+}
+
+.tp-chart-tooltip.left.center .tp-chart-tooltip-arrow {
+  right: 100%;
+  top: 50%;
+  margin-top: -5px;
+  border-left: none;
+  border-right-color: rgba(10, 12, 18, 0.92);
+}
+
+.tp-chart-tooltip.right.center .tp-chart-tooltip-arrow {
+  left: 100%;
+  top: 50%;
+  margin-top: -5px;
+  border-right: none;
+  border-left-color: rgba(10, 12, 18, 0.92);
+}
+
+/* Chart legend (chartSetup.js's htmlLegendPlugin, e.g. SeverityBreakdownCard)
+   — a real checkbox-per-row <ul>, ported from Pi-hole's own .chart-legend. */
+.tp-chart-legend ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tp-chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: background 120ms ease;
+}
+
+.tp-chart-legend li:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tp-legend-checkbox {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  cursor: pointer;
+  background: var(--tp-legend-color, #9ca3af);
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
+}
+
+.tp-legend-checkbox:hover {
+  transform: scale(1.15);
+}
+
+/* Toggled off: hollow outline instead of a filled square, same "off" read
+   as an unchecked checkbox, still tinted with the slice's own color. */
+.tp-legend-checkbox[aria-checked="false"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--tp-legend-color, #9ca3af);
+  opacity: 0.6;
+}
+
+.tp-legend-label {
+  color: #9ca3af;
+  flex: 1;
+}
+
+.tp-legend-label.clickable {
+  cursor: pointer;
+}
+
+.tp-legend-label.clickable:hover {
+  text-decoration: underline;
+  color: #e8eaed;
+}
+
+/* Plain-English metric explanations (frontend/src/components/common/InfoTooltip.jsx) */
+
+.tp-info-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  cursor: help;
+  vertical-align: middle;
+}
+
+.tp-info-tip-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid #4b5563;
+  color: #9ca3af;
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+  font-weight: 700;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.tp-info-tip-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  background: #1a1e2e;
+  border: 1px solid #2d3748;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #e8eaed;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+  z-index: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.tp-info-tip:hover .tp-info-tip-bubble,
+.tp-info-tip:focus .tp-info-tip-bubble,
+.tp-info-tip:focus-within .tp-info-tip-bubble {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Live-status pulse (StatusBanner) and KPI-update flash (KpiCard) */
+
+@keyframes tp-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--tp-pulse-color) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--tp-pulse-color) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--tp-pulse-color) 0%, transparent);
+  }
+}
+
+.tp-pulse-dot {
+  animation: tp-pulse 1.8s ease-out infinite;
+}
+
+@keyframes tp-kpi-flash {
+  0% {
+    background: rgba(8, 145, 178, 0.16);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.tp-kpi-flash {
+  animation: tp-kpi-flash 900ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-pulse-dot,
+  .tp-kpi-flash {
+    animation: none;
+  }
 }
 
 /* Component library (frontend/src/components/common/*) — compact chrome for
@@ -334,7 +612,45 @@ input[type="checkbox"] {
 .tp-card {
   background: #1a1e2e;
   border: 1px solid #2d3748;
+  border-left: 1px solid #2d3748;
   border-radius: 8px;
+  transition:
+    border-left-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.tp-card:hover {
+  border-left-color: #0891b2;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+}
+
+/* KpiCard.jsx doesn't use the shared Card component (different layout
+   needs), so it gets its own identically-behaved hover class instead of
+   fighting an inline `border` shorthand, which would otherwise always win
+   over a stylesheet :hover rule regardless of specificity. */
+.tp-kpi-card {
+  border: 1px solid #2d3748;
+  border-left: 1px solid #2d3748;
+  transition:
+    border-left-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.tp-kpi-card:hover {
+  border-left-color: #0891b2;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+  transform: scale(1.02);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-card,
+  .tp-kpi-card {
+    transition: none;
+  }
+  .tp-kpi-card:hover {
+    transform: none;
+  }
 }
 
 .tp-badge {
@@ -347,6 +663,43 @@ input[type="checkbox"] {
   border-radius: 4px;
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+/* Drill-down drawer (frontend/src/components/dashboard/MetricPanel.jsx) */
+
+@keyframes tp-panel-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.tp-panel-in {
+  animation: tp-panel-in 220ms ease-out;
+}
+
+.tp-panel-close {
+  transition:
+    transform 150ms ease,
+    color 150ms ease;
+}
+
+.tp-panel-close:hover {
+  transform: scale(1.1);
+  color: #e8eaed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-panel-in {
+    animation: none;
+  }
+  .tp-panel-close {
+    transition: none;
+  }
 }
 
 .tp-table {
@@ -431,4 +784,43 @@ input[type="checkbox"] {
 
 .tp-topbar-search:hover {
   border-color: #4b5563;
+}
+
+/* EventsOverTimeCard stat strip
+   ─────────────────────────────────────────────────────────────────────────
+   4-equal-column grid on wide screens; collapses to 2×2 on narrow viewports
+   (anything < ~600px) so cells never overflow or squeeze illegibly.
+   Dividers are CSS borders rather than inline JSX props so they can use
+   :last-child to avoid a double right-edge border on the final cell.      */
+.tp-events-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid #2d3748;
+  margin-top: 12px;
+}
+
+.tp-events-stat-cell {
+  padding: 18px 24px;
+  border-right: 1px solid #2d3748;
+}
+
+.tp-events-stat-cell:last-child {
+  border-right: none;
+}
+
+@media (max-width: 620px) {
+  .tp-events-stat-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* In 2-col mode, cells 1 and 3 lose their right border only at the
+     column edge — :nth-child(even) are the right-column cells.         */
+  .tp-events-stat-cell:nth-child(even) {
+    border-right: none;
+  }
+
+  /* Add a bottom border between the two rows in 2-col mode */
+  .tp-events-stat-cell:nth-child(-n + 2) {
+    border-bottom: 1px solid #2d3748;
+  }
 }

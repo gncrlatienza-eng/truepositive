@@ -16,6 +16,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [maxStep, setMaxStep] = useState(1);
   const [agentId, setAgentId] = useState(null);
+  const [agentPlatform, setAgentPlatform] = useState("windows");
 
   function goTo(n) {
     if (n <= maxStep) setStep(n);
@@ -156,9 +157,16 @@ export default function OnboardingPage() {
           <div style={{ maxWidth: 800 }}>
             {step === 1 && <OnboardingStep1 onNext={() => advance(2)} />}
             {step === 2 && (
-              <OnboardingStep2 onBack={() => goTo(1)} onNext={() => advance(3)} onAgentCreated={setAgentId} />
+              <OnboardingStep2
+                onBack={() => goTo(1)}
+                onNext={() => advance(3)}
+                onAgentCreated={(agent) => {
+                  setAgentId(agent.id);
+                  setAgentPlatform(agent.platform);
+                }}
+              />
             )}
-            {step === 3 && <OnboardingStep3 onBack={() => goTo(2)} agentId={agentId} />}
+            {step === 3 && <OnboardingStep3 onBack={() => goTo(2)} agentId={agentId} platform={agentPlatform} />}
           </div>
         </div>
       </div>

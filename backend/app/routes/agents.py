@@ -14,9 +14,12 @@ from app.schemas.agents import (
     AgentDownloadRequest,
     AgentOut,
     AgentRegisterRequest,
+    AgentSourceOut,
     HeartbeatResponse,
 )
-from app.services import agent_service
+from app.schemas.log_sources import SourceStatusReportRequest, SourceStatusReportResponse
+from app.schemas.logs import LogIngestRequest, LogIngestResponse
+from app.services import agent_service, log_service, log_source_service
 from app.utils.security import get_current_agent, get_current_user, verify_password
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -52,7 +55,7 @@ def list_agents(current_user: User = Depends(get_current_user), db: Session = De
 # Two path segments ("download", "windows"), so this can never collide with
 # the single-segment /{agent_id} below regardless of registration order.
 def _read_agent_binary() -> bytes:
-    binary_path = AGENT_BINARY_DIR / "tp_agent.exe"
+    binary_path = AGENT_BINARY_DIR / "truepositive-agent.exe"
     if not binary_path.exists():
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
@@ -69,7 +72,28 @@ def download_windows_agent():
     return Response(
         content=_read_agent_binary(),
         media_type="application/octet-stream",
-        headers={"Content-Disposition": 'attachment; filename="tp_agent.exe"'},
+        headers={"Content-Disposition": 'attachment; filename="truepositive-agent.exe"'},
+    )
+
+
+# The dashboard's primary Windows download: a real installer (EULA, install
+# location, Start Menu shortcut, proper uninstall) built from agent/installer.iss
+# — see agent/README.md. Same generic file for every org (no per-agent config
+# baked in, unlike the raw binary above) — the installed app asks for the
+# Server URL/Agent ID/Key on first launch instead. No auth, same reasoning
+# as the raw binary above.
+@router.get("/download/windows-installer")
+def download_windows_installer():
+    binary_path = AGENT_BINARY_DIR / "truepositive-agent-setup.exe"
+    if not binary_path.exists():
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Agent installer not built yet — see agent/README.md for how to build it.",
+        )
+    return Response(
+        content=binary_path.read_bytes(),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": 'attachment; filename="truepositive-agent-setup.exe"'},
     )
 
 
@@ -92,7 +116,7 @@ def download_windows_agent_configured(
     return Response(
         content=combined,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": 'attachment; filename="tp_agent.exe"'},
+        headers={"Content-Disposition": 'attachment; filename="truepositive-agent.exe"'},
     )
 
 
@@ -133,3 +157,30 @@ def register_agent(
 @router.post("/{agent_id}/heartbeat", response_model=HeartbeatResponse)
 def heartbeat(agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)):
     return agent_service.heartbeat(db, agent)
+
+
+# Polled by the agent each cycle rather than baked into its downloaded
+# config, so adding/editing/pausing a source in Settings takes effect
+# without redeploying the agent at all.
+@router.get("/{agent_id}/sources", response_model=list[AgentSourceOut])
+def list_agent_sources(agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)):
+    sources = log_source_service.list_active_local_sources_for_agent(db, agent.id)
+    return [AgentSourceOut.model_validate(s) for s in sources]
+
+
+@router.post("/{agent_id}/logs", response_model=LogIngestResponse)
+def ingest_agent_logs(
+    payload: LogIngestRequest, agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)
+):
+    return log_service.ingest_logs(db, agent, payload)
+
+
+# Called once per collection cycle for every local source the agent was
+# assigned — independent of whether that cycle shipped any logs — so
+# Settings can show a genuinely agent-reported health status, not a guess.
+@router.post("/{agent_id}/sources/status", response_model=SourceStatusReportResponse)
+def report_agent_source_status(
+    payload: SourceStatusReportRequest, agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)
+):
+    updated = log_source_service.report_source_status(db, agent, payload)
+    return SourceStatusReportResponse(updated=updated)

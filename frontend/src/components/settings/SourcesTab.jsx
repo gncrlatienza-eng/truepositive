@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
-import { api } from "../../utils/api";
-import { deleteAgent, listAgents, rotateAgentKey } from "../../api/agents";
-import { downloadWindowsAgent } from "../../utils/agentDownload";
+import { deleteAgent, listAgents } from "../../api/agents";
 import { deleteSource, listSources, updateSource } from "../../api/sources";
 import ConfirmModal from "../common/ConfirmModal";
-import Modal from "../common/Modal";
 import ConnectSourceModal from "./ConnectSourceModal";
 import DeployAgentModal from "./DeployAgentModal";
+import SourceDetailModal from "./SourceDetailModal";
+import { computeSourceHealth, HEALTH_COLOR_HEX } from "../../utils/sourceHealth";
 
 const AGENT_STATUS_COLOR = {
   connected: theme.color.severity.ok,
@@ -34,10 +33,9 @@ export default function SourcesTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modalSource, setModalSource] = useState(undefined); // undefined = closed, null = create, object = edit
-  const [deployOpen, setDeployOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState(null); // { type: "agent" | "source", item }
-  const [redeploying, setRedeploying] = useState(null); // agent id currently redeploying, for the button's own spinner
-  const [redeployCommand, setRedeployCommand] = useState(null); // non-Windows fallback: show the rotated command
+  const [detailSource, setDetailSource] = useState(null); // source whose container was clicked, for the health detail modal
+  const [deployOpen, setDeployOpen] = useState(false);
 
   async function refresh() {
     const [agentList, sourceList] = await Promise.all([listAgents(), listSources()]);
@@ -76,8 +74,9 @@ export default function SourcesTab() {
     try {
       await deleteAgent(agent.id);
       setAgents((prev) => prev.filter((a) => a.id !== agent.id));
-    } catch {
-      setError("Could not delete that agent.");
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setError(Array.isArray(detail) ? detail.map((d) => d.msg).join(" ") : detail || "Could not delete that agent.");
     }
   }
 
@@ -85,28 +84,6 @@ export default function SourcesTab() {
     if (!confirmTarget) return;
     if (confirmTarget.type === "agent") performDeleteAgent(confirmTarget.item);
     else performDeleteSource(confirmTarget.item);
-  }
-
-  // Re-running the *same* already-downloaded agent reconnects it on its
-  // own (register isn't blocked by status) — this is only needed when
-  // that file/config is gone, since the raw key was never stored server-side.
-  async function handleRedeploy(agent) {
-    setError("");
-    setRedeploying(agent.id);
-    try {
-      const rotated = await rotateAgentKey(agent.id);
-      if (agent.platform === "windows") {
-        await downloadWindowsAgent({ id: agent.id, key: rotated.enrollment_key });
-      } else {
-        setRedeployCommand(
-          `python tp_agent.py --url ${api.defaults.baseURL} --id ${agent.id} --key ${rotated.enrollment_key}`,
-        );
-      }
-    } catch {
-      setError("Could not redeploy that agent.");
-    } finally {
-      setRedeploying(null);
-    }
   }
 
   function handleSaved(saved) {
@@ -122,133 +99,151 @@ export default function SourcesTab() {
     <div>
       <ErrorBanner>{error}</ErrorBanner>
 
-      <div style={{ marginBottom: theme.space[6] }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: theme.space[3],
-          }}
-        >
-          <h3 style={{ fontSize: 16, margin: 0 }}>Agents</h3>
-          <OutlineButton
-            type="button"
-            style={{ width: "auto", padding: "6px 14px", fontSize: 13 }}
-            onClick={() => setDeployOpen(true)}
-          >
-            + Deploy agent
-          </OutlineButton>
-        </div>
-        {agents.length === 0 ? (
-          <div style={{ fontSize: 14, color: theme.color.textFaint }}>
-            No agents yet — click &ldquo;Deploy agent&rdquo; above to install one.
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
-            {agents.map((a) => (
-              <div
-                key={a.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: theme.space[3],
-                  padding: theme.space[3],
-                  border: `1px solid ${theme.color.border}`,
-                  borderRadius: theme.radius.md,
-                  background: theme.color.surface,
-                }}
-              >
-                <StatusDot color={AGENT_STATUS_COLOR[a.status]} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>
-                    {a.name} {a.hostname && <span style={{ color: theme.color.textMuted }}>· {a.hostname}</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: theme.color.textFaint }}>
-                    {a.status} · last seen {relativeTime(a.last_seen_at)}
-                  </div>
-                </div>
-                {a.status !== "connected" && (
-                  <OutlineButton
-                    type="button"
-                    style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                    disabled={redeploying === a.id}
-                    onClick={() => handleRedeploy(a)}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space[6], alignItems: "flex-start" }}>
+        <div style={{ flex: "1 1 480px", minWidth: 0 }}>
+          <div style={{ marginBottom: theme.space[6] }}>
+            <h3 style={{ fontSize: 16, margin: 0, marginBottom: theme.space[3] }}>Agents</h3>
+            {agents.length === 0 ? (
+              <div style={{ fontSize: 14, color: theme.color.textFaint }}>
+                No agents yet — get credentials and install one on the right.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
+                {agents.map((a) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: theme.space[3],
+                      padding: theme.space[3],
+                      border: `1px solid ${theme.color.border}`,
+                      borderRadius: theme.radius.md,
+                      background: theme.color.surface,
+                    }}
                   >
-                    {redeploying === a.id ? "Redeploying…" : "Redeploy"}
-                  </OutlineButton>
-                )}
-                <OutlineButton
-                  type="button"
-                  style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
-                  onClick={() => setConfirmTarget({ type: "agent", item: a })}
-                >
-                  Delete
-                </OutlineButton>
+                    <StatusDot color={AGENT_STATUS_COLOR[a.status]} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>
+                        {a.name} {a.hostname && <span style={{ color: theme.color.textMuted }}>· {a.hostname}</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: theme.color.textFaint }}>
+                        {a.status} · last seen {relativeTime(a.last_seen_at)}
+                      </div>
+                    </div>
+                    <OutlineButton
+                      type="button"
+                      style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
+                      onClick={() => setConfirmTarget({ type: "agent", item: a })}
+                    >
+                      Delete
+                    </OutlineButton>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
 
-      <div
-        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: theme.space[4] }}
-      >
-        <h3 style={{ fontSize: 16, margin: 0 }}>Data sources</h3>
-        <PrimaryButton type="button" style={{ width: "auto" }} onClick={() => setModalSource(null)}>
-          + Connect data source
-        </PrimaryButton>
-      </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: theme.space[4],
+            }}
+          >
+            <h3 style={{ fontSize: 16, margin: 0 }}>Data sources</h3>
+            <PrimaryButton type="button" style={{ width: "auto" }} onClick={() => setModalSource(null)}>
+              + Connect data source
+            </PrimaryButton>
+          </div>
 
-      {sources.length === 0 ? (
-        <div style={{ fontSize: 14, color: theme.color.textFaint }}>No sources configured yet.</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: theme.space[3] }}>
-          {sources.map((s) => (
-            <div
-              key={s.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: theme.space[3],
-                padding: theme.space[4],
-                border: `1px solid ${theme.color.border}`,
-                borderRadius: theme.radius.md,
-                background: theme.color.surface,
-              }}
-            >
-              <StatusDot color={s.status === "active" ? theme.color.severity.ok : theme.color.textFaint} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>{s.name}</div>
-                <div style={{ fontSize: 13, color: theme.color.textFaint, fontFamily: theme.font.mono }}>
-                  {s.type === "local" ? s.path || "local" : `${s.protocol}://${s.host}:${s.port}`}
-                </div>
-              </div>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                onClick={() => togglePause(s)}
-              >
-                {s.status === "active" ? "Pause" : "Resume"}
-              </OutlineButton>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                onClick={() => setModalSource(s)}
-              >
-                Edit
-              </OutlineButton>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
-                onClick={() => setConfirmTarget({ type: "source", item: s })}
-              >
-                Delete
-              </OutlineButton>
+          {sources.length === 0 ? (
+            <div style={{ fontSize: 14, color: theme.color.textFaint }}>No sources configured yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: theme.space[3] }}>
+              {sources.map((s) => {
+                const health = computeSourceHealth(s, agents);
+                const colorKey = HEALTH_COLOR_HEX[health.color];
+                const dotColor = colorKey ? theme.color.severity[colorKey] : theme.color.textFaint;
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => setDetailSource(s)}
+                    title={`${health.label} — click for details`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: theme.space[3],
+                      padding: theme.space[4],
+                      border: `1px solid ${theme.color.border}`,
+                      borderRadius: theme.radius.md,
+                      background: theme.color.surface,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <StatusDot color={dotColor} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600 }}>{s.name}</div>
+                      <div style={{ fontSize: 13, color: theme.color.textFaint, fontFamily: theme.font.mono }}>
+                        {s.type === "local" ? s.path || "local" : `${s.protocol}://${s.host}:${s.port}`}
+                      </div>
+                    </div>
+                    <OutlineButton
+                      type="button"
+                      style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePause(s);
+                      }}
+                    >
+                      {s.status === "active" ? "Pause" : "Resume"}
+                    </OutlineButton>
+                    <OutlineButton
+                      type="button"
+                      style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setModalSource(s);
+                      }}
+                    >
+                      Edit
+                    </OutlineButton>
+                    <OutlineButton
+                      type="button"
+                      style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmTarget({ type: "source", item: s });
+                      }}
+                    >
+                      Delete
+                    </OutlineButton>
+                  </div>
+                );
+              })}
             </div>
-          ))}
+          )}
         </div>
-      )}
+
+        <div style={{ flex: "1 1 320px", maxWidth: 360, minWidth: 300, position: "sticky", top: theme.space[4] }}>
+          <div
+            style={{
+              border: `1px solid ${theme.color.border}`,
+              borderRadius: theme.radius.lg,
+              padding: theme.space[5],
+            }}
+          >
+            <h3 style={{ fontSize: 16, margin: 0, marginBottom: theme.space[2] }}>Install an agent</h3>
+            <p style={{ fontSize: 13, color: theme.color.textFaint, marginTop: 0, marginBottom: theme.space[4] }}>
+              Generate credentials and install the agent on the host you want to monitor.
+            </p>
+            <PrimaryButton type="button" style={{ width: "auto" }} onClick={() => setDeployOpen(true)}>
+              + Deploy an agent
+            </PrimaryButton>
+          </div>
+        </div>
+      </div>
 
       <ConfirmModal
         open={!!confirmTarget}
@@ -262,31 +257,19 @@ export default function SourcesTab() {
         }
       />
 
-      <Modal open={!!redeployCommand} onClose={() => setRedeployCommand(null)} title="New enrollment command">
-        <p style={{ fontSize: 14, color: theme.color.textMuted, marginBottom: theme.space[4] }}>
-          The old credentials no longer work. Run this on the host to reconnect:
-        </p>
-        <div
-          style={{
-            background: theme.color.background,
-            border: `1px solid ${theme.color.border}`,
-            borderRadius: theme.radius.sm,
-            padding: theme.space[4],
-            fontFamily: theme.font.mono,
-            fontSize: 14,
-            color: theme.color.text,
-            overflowX: "auto",
-          }}
-        >
-          $ {redeployCommand}
-        </div>
-      </Modal>
+      <SourceDetailModal
+        open={!!detailSource}
+        onClose={() => setDetailSource(null)}
+        source={detailSource}
+        agents={agents}
+      />
 
       <ConnectSourceModal
         open={modalSource !== undefined}
         onClose={() => setModalSource(undefined)}
         onSaved={handleSaved}
         agents={agents}
+        sources={sources}
         source={modalSource || null}
       />
 

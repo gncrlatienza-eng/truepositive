@@ -49,3 +49,16 @@ class HeartbeatResponse(BaseModel):
     id: uuid.UUID
     status: AgentStatus
     last_seen_at: datetime
+
+
+# What the agent itself is allowed to see about its own assigned sources —
+# no credential fields at all, since this sprint's real collection only
+# reads local sources (Windows Event Log channels / local files), never the
+# encrypted remote SSH credentials.
+class AgentSourceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    path: str | None
+    tags: list[str]

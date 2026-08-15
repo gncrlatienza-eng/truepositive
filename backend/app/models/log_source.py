@@ -32,6 +32,16 @@ class LogSourceCredentialType(enum.StrEnum):
     KERBEROS = "kerberos"
 
 
+# Reported by the agent itself each collection cycle (see
+# POST /agents/{id}/sources/status) — this is the real, agent-observed
+# outcome of the last attempt to read this source, not a guess derived from
+# whether logs happen to exist. Deliberately separate from `status` above,
+# which is the user's own active/paused toggle.
+class LogSourceHealthStatus(enum.StrEnum):
+    OK = "ok"
+    ERROR = "error"
+
+
 class LogSource(Base):
     __tablename__ = "log_sources"
 
@@ -56,4 +66,11 @@ class LogSource(Base):
     status: Mapped[LogSourceStatus] = mapped_column(
         pg_enum(LogSourceStatus, "log_source_status"), default=LogSourceStatus.ACTIVE
     )
+    # Populated by the agent's per-cycle status report — null until the first
+    # report arrives (e.g. a brand-new or not-yet-assigned source).
+    last_collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[LogSourceHealthStatus | None] = mapped_column(
+        pg_enum(LogSourceHealthStatus, "log_source_health_status"), nullable=True
+    )
+    last_status_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

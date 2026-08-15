@@ -13,6 +13,8 @@ secrets/
 credentials.json
 # Per-agent enrollment config downloaded from the dashboard (agent/tp_agent.py) — contains a real key.
 agent_config.json
+# Per-source collection bookmarks (Sprint 5) — machine-local runtime state, not source.
+agent_state.json
 
 # ==============================
 # Claude workspace (not committed)

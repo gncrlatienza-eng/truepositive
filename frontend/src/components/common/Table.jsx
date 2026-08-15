@@ -4,7 +4,7 @@ import { Button } from "./Button";
 
 // Sortable + paginated table, greenfield for Sprint 5+ to consume (Logs/Alerts
 // tables). `columns`: [{ key, label, sortable, sortValue?, render?, align? }].
-export function Table({ columns, rows, rowKey, pageSize = 10, emptyMessage = "No data" }) {
+export function Table({ columns, rows, rowKey, pageSize = 10, emptyMessage = "No data", onRowClick }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(0);
@@ -66,7 +66,11 @@ export function Table({ columns, rows, rowKey, pageSize = 10, emptyMessage = "No
           </thead>
           <tbody>
             {pageRows.map((row) => (
-              <tr key={rowKey(row)}>
+              <tr
+                key={rowKey(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                style={onRowClick ? { cursor: "pointer" } : undefined}
+              >
                 {columns.map((col) => (
                   <td key={col.key} style={{ textAlign: col.align || "left" }}>
                     {col.render ? col.render(row) : row[col.key]}

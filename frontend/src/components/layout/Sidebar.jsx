@@ -1,88 +1,25 @@
 import { NavLink } from "react-router-dom";
+import { LayoutDashboard, ScrollText, Bell, Siren, FileBarChart2, ShieldCheck, Settings2 } from "lucide-react";
 import { theme } from "../../styles/theme";
 
+// Icon set: lucide-react v0.x (MIT). Selected over continuing to hand-roll
+// SVGs because all 7 previous hand-drawn icons had inconsistent stroke widths
+// (1.5 / 1.6 / 1.7 / 1.8 mixed) which read as unpolished at sidebar scale.
+// Lucide guarantees a uniform 24×24 grid, 1.5px stroke, and exports only the
+// icons we import (tree-shaken at build time — bundle cost: ~1 kB per icon).
+// All icons use stroke="currentColor" by default, so they inherit the
+// NavLink's active (accent teal) / inactive (muted gray) color automatically.
+const ICON_SIZE = 22;
+const ICON_STROKE = 1.6; // slightly heavier than Lucide's default 2px to match this dark UI's weight
+
 const ICONS = {
-  dashboard: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="3.25" y="3.25" width="7" height="7" rx="1.6" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="13.75" y="3.25" width="7" height="7" rx="1.6" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="3.25" y="13.75" width="7" height="7" rx="1.6" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="13.75" y="13.75" width="7" height="7" rx="1.6" fill="currentColor" />
-    </svg>
-  ),
-  logs: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <line x1="3.5" y1="6" x2="20.5" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="3.5" y1="12" x2="16" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="3.5" y1="18" x2="20.5" y2="18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  ),
-  alerts: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 3.5C15 3.5 15.8 6.2 15.8 8.5C15.8 11.5 17 12.8 18 14.2C18.6 15 18.1 16 17.1 16H6.9C5.9 16 5.4 15 6 14.2C7 12.8 8.2 11.5 8.2 8.5C8.2 6.2 9 3.5 12 3.5Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <path
-        d="M9.8 19C10.2 20 11 20.6 12 20.6C13 20.6 13.8 20 14.2 19"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        fill="none"
-      />
-    </svg>
-  ),
-  incidents: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M8.5 7V5.5C8.5 4.4 9.4 3.5 10.5 3.5H13.5C14.6 3.5 15.5 4.4 15.5 5.5V7"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        fill="none"
-      />
-      <rect x="3" y="7" width="18" height="12.5" rx="2" stroke="currentColor" strokeWidth="1.7" />
-      <line x1="3" y1="12.2" x2="21" y2="12.2" stroke="currentColor" strokeWidth="1.7" />
-    </svg>
-  ),
-  reports: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M7 3.5H14L18 7.5V19C18 19.8 17.3 20.5 16.5 20.5H7.5C6.7 20.5 6 19.8 6 19V5C6 4.2 6.7 3.5 7.5 3.5H7Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <path d="M14 3.5V7.5H18" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" fill="none" />
-      <line x1="8.7" y1="12.5" x2="15.3" y2="12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="8.7" y1="15.7" x2="13" y2="15.7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  ),
-  intel: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="10.2" cy="10.2" r="6.4" stroke="currentColor" strokeWidth="1.8" fill="none" />
-      <line x1="14.7" y1="14.7" x2="20" y2="20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  ),
-  settings: (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-    >
-      <circle cx="12" cy="12" r="9" strokeDasharray="2.3 2.3" />
-      <circle cx="12" cy="12" r="5" />
-      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
-    </svg>
-  ),
+  dashboard: <LayoutDashboard size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  logs: <ScrollText size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  alerts: <Bell size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  incidents: <Siren size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  reports: <FileBarChart2 size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  intel: <ShieldCheck size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  settings: <Settings2 size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
 };
 
 function navItems(criticalCount) {
@@ -143,6 +80,8 @@ export default function Sidebar({ railW, collapsed, criticalCount }) {
               background: isActive ? "rgba(8, 145, 178, 0.1)" : "transparent",
             })}
           >
+            {/* Icon wrapper — position:relative so the badge floats top-right
+                of the icon without affecting the label below it.             */}
             <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
               {ICONS[item.icon]}
               {item.badge != null && (

@@ -3,7 +3,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.models.log_source import LogSource, LogSourceCredentialType, LogSourceProtocol, LogSourceStatus, LogSourceType
+from app.models.log_source import (
+    LogSource,
+    LogSourceCredentialType,
+    LogSourceHealthStatus,
+    LogSourceProtocol,
+    LogSourceStatus,
+    LogSourceType,
+)
 
 # SSH only this release; WinRM/Syslog and Kerberos are visible "coming soon"
 # stubs in the UI rather than silently accepted — see docs/SPRINT_PLAN.md.
@@ -82,6 +89,12 @@ class LogSourceOut(BaseModel):
     has_credential: bool
     tags: list[str]
     status: LogSourceStatus
+    # The agent's own last-reported outcome for this source — see
+    # POST /agents/{id}/sources/status. All null until the agent's first
+    # report (e.g. brand new, or never assigned to a running agent).
+    last_collected_at: datetime | None
+    last_status: LogSourceHealthStatus | None
+    last_status_reason: str | None
     created_at: datetime
 
     # Explicit conversion (not from_attributes) so the ciphertext column can
@@ -103,5 +116,26 @@ class LogSourceOut(BaseModel):
             has_credential=log_source.credential_encrypted is not None,
             tags=log_source.tags,
             status=log_source.status,
+            last_collected_at=log_source.last_collected_at,
+            last_status=log_source.last_status,
+            last_status_reason=log_source.last_status_reason,
             created_at=log_source.created_at,
         )
+
+
+# Reported by the agent once per collection cycle for every local source it
+# was assigned, regardless of whether that cycle produced any new events —
+# this is what makes the green/yellow/red status in Settings genuinely
+# reflect the agent's real last attempt instead of a guess.
+class SourceStatusItem(BaseModel):
+    source_id: uuid.UUID
+    status: LogSourceHealthStatus
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class SourceStatusReportRequest(BaseModel):
+    results: list[SourceStatusItem] = Field(min_length=1, max_length=500)
+
+
+class SourceStatusReportResponse(BaseModel):
+    updated: int

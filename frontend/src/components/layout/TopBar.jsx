@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { theme } from "../../styles/theme";
 import { useAuth } from "../../context/AuthContext";
@@ -19,8 +20,26 @@ function crumbLeafFor(pathname) {
 }
 
 export default function TopBar({ collapsed, onToggleSidebar }) {
-  const { user, org } = useAuth();
+  const { user, org, logout } = useAuth();
   const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    function onPointerDown(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    }
+    function onKeyDown(e) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   return (
     <div
@@ -179,30 +198,108 @@ export default function TopBar({ collapsed, onToggleSidebar }) {
           </span>
         </div>
         <div style={{ width: 1, height: 22, background: theme.color.border }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
+        <div ref={menuRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
             style={{
-              width: 34,
-              height: 34,
-              borderRadius: "50%",
-              background: theme.color.accent,
-              color: "#0F1219",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 700,
-              fontSize: 14,
-              flexShrink: 0,
+              gap: 10,
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              color: theme.color.text,
             }}
           >
-            {(user?.full_name || "?").slice(0, 1).toUpperCase()}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>{user?.full_name}</span>
-            <span style={{ fontSize: 12, color: theme.color.textMuted, whiteSpace: "nowrap" }}>
-              {ROLE_LABELS[user?.role] || user?.role}
-            </span>
-          </div>
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                background: theme.color.accent,
+                color: "#0F1219",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 700,
+                fontSize: 14,
+                flexShrink: 0,
+              }}
+            >
+              {(user?.full_name || "?").slice(0, 1).toUpperCase()}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.25, textAlign: "left" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>{user?.full_name}</span>
+              <span style={{ fontSize: 12, color: theme.color.textMuted, whiteSpace: "nowrap" }}>
+                {ROLE_LABELS[user?.role] || user?.role}
+              </span>
+            </div>
+          </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 8px)",
+                right: 0,
+                minWidth: 200,
+                background: theme.color.surface,
+                border: `1px solid ${theme.color.border}`,
+                borderRadius: theme.radius.md,
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+                zIndex: 200,
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ padding: "10px 14px", borderBottom: `1px solid ${theme.color.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>{user?.full_name}</div>
+                <div style={{ fontSize: 12, color: theme.color.textMuted }}>
+                  {ROLE_LABELS[user?.role] || user?.role} · {org?.slug || "workspace"}
+                </div>
+              </div>
+              <Link
+                to="/settings"
+                role="menuitem"
+                onClick={() => setMenuOpen(false)}
+                style={{
+                  display: "block",
+                  padding: "9px 14px",
+                  fontSize: 13,
+                  color: theme.color.text,
+                  textDecoration: "none",
+                }}
+              >
+                Settings
+              </Link>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  logout();
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "9px 14px",
+                  fontSize: 13,
+                  color: theme.color.text,
+                  background: "none",
+                  border: "none",
+                  borderTop: `1px solid ${theme.color.border}`,
+                  cursor: "pointer",
+                }}
+              >
+                Log out
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

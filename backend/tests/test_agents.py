@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.models.agent import Agent
+from app.routes import agents as agents_routes
 
 
 def _create_agent(client, auth_headers, name="dc-01", platform="windows"):
@@ -127,6 +128,42 @@ def test_delete_agent_detaches_log_sources(client, auth_headers):
     assert source_after["agent_id"] is None
 
 
+def test_delete_agent_detaches_logs(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+
+    source = client.post(
+        "/logs/sources",
+        json={"name": "s", "type": "local", "agent_id": agent_id, "path": "Security"},
+        headers=auth_headers,
+    ).json()
+    client.post(f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": key})
+    ingest = client.post(
+        f"/agents/{agent_id}/logs",
+        json={
+            "logs": [
+                {
+                    "source_id": source["id"],
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "severity": "ok",
+                    "event_type": "test",
+                    "message": "m",
+                    "raw": {},
+                }
+            ]
+        },
+        headers={"X-Agent-Key": key},
+    )
+    assert ingest.status_code == 200, ingest.text
+
+    delete = client.delete(f"/agents/{agent_id}", headers=auth_headers)
+    assert delete.status_code == 204
+
+    logs = client.get("/logs", headers=auth_headers).json()
+    assert logs["total"] == 1
+    assert logs["items"][0]["agent_id"] is None
+
+
 def test_cross_org_delete_agent_404(client, auth_headers, second_org_headers):
     created = _create_agent(client, auth_headers)
     response = client.delete(f"/agents/{created['agent']['id']}", headers=second_org_headers)
@@ -175,3 +212,72 @@ def test_cross_org_rotate_key_404(client, auth_headers, second_org_headers):
     created = _create_agent(client, auth_headers)
     response = client.post(f"/agents/{created['agent']['id']}/rotate-key", headers=second_org_headers)
     assert response.status_code == 404
+
+
+def test_report_source_status_ok_and_error(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    source = client.post(
+        "/logs/sources",
+        json={"name": "s", "type": "local", "agent_id": agent_id, "path": "Security"},
+        headers=auth_headers,
+    ).json()
+    assert source["last_status"] is None
+    assert source["last_collected_at"] is None
+
+    report = client.post(
+        f"/agents/{agent_id}/sources/status",
+        json={"results": [{"source_id": source["id"], "status": "error", "reason": "Access is denied."}]},
+        headers={"X-Agent-Key": key},
+    )
+    assert report.status_code == 200, report.text
+    assert report.json()["updated"] == 1
+
+    after = client.get(f"/logs/sources/{source['id']}", headers=auth_headers).json()
+    assert after["last_status"] == "error"
+    assert after["last_status_reason"] == "Access is denied."
+    assert after["last_collected_at"] is not None
+
+    report_ok = client.post(
+        f"/agents/{agent_id}/sources/status",
+        json={"results": [{"source_id": source["id"], "status": "ok"}]},
+        headers={"X-Agent-Key": key},
+    )
+    assert report_ok.status_code == 200, report_ok.text
+    after_ok = client.get(f"/logs/sources/{source['id']}", headers=auth_headers).json()
+    assert after_ok["last_status"] == "ok"
+    assert after_ok["last_status_reason"] is None  # cleared once it recovers
+
+
+def test_report_source_status_rejects_unowned_source(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    other_agent = _create_agent(client, auth_headers, name="dc-02")
+    other_source = client.post(
+        "/logs/sources",
+        json={"name": "s", "type": "local", "agent_id": other_agent["agent"]["id"], "path": "System"},
+        headers=auth_headers,
+    ).json()
+
+    response = client.post(
+        f"/agents/{agent_id}/sources/status",
+        json={"results": [{"source_id": other_source["id"], "status": "ok"}]},
+        headers={"X-Agent-Key": key},
+    )
+    assert response.status_code == 422
+
+
+def test_download_windows_installer_404_when_not_built(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(agents_routes, "AGENT_BINARY_DIR", tmp_path)
+    response = client.get("/agents/download/windows-installer")
+    assert response.status_code == 404
+
+
+def test_download_windows_installer_serves_binary_when_built(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(agents_routes, "AGENT_BINARY_DIR", tmp_path)
+    (tmp_path / "truepositive-agent-setup.exe").write_bytes(b"fake-installer-bytes")
+
+    response = client.get("/agents/download/windows-installer")
+    assert response.status_code == 200
+    assert response.content == b"fake-installer-bytes"
+    assert response.headers["content-disposition"] == 'attachment; filename="truepositive-agent-setup.exe"'

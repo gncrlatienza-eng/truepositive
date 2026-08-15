@@ -3,9 +3,11 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent, AgentStatus
+from app.models.log import Log
 from app.models.log_source import LogSource
 from app.schemas.agents import AgentCreate, AgentRegisterRequest
 from app.utils.security import generate_agent_key, hash_password
@@ -27,6 +29,26 @@ def _sweep_stale(db: Session, agent: Agent) -> Agent:
     return agent
 
 
+# Same staleness rule as _sweep_stale, batched into one UPDATE + one commit
+# instead of one per agent — list_agents' per-agent commit/refresh was an N+1
+# hit continuously exercised by the dashboard's 30s polling once an org has
+# more than a couple of stale agents.
+def _sweep_stale_batch(db: Session, agents: list[Agent]) -> None:
+    threshold = datetime.now(UTC) - STALE_AFTER
+    stale_ids = [
+        a.id
+        for a in agents
+        if a.status == AgentStatus.CONNECTED and a.last_seen_at is not None and a.last_seen_at <= threshold
+    ]
+    if not stale_ids:
+        return
+    db.execute(update(Agent).where(Agent.id.in_(stale_ids)).values(status=AgentStatus.DISCONNECTED))
+    db.commit()
+    for agent in agents:
+        if agent.id in stale_ids:
+            agent.status = AgentStatus.DISCONNECTED
+
+
 def create_agent(db: Session, org_id: uuid.UUID, payload: AgentCreate) -> tuple[Agent, str]:
     raw_key = generate_agent_key()
     agent = Agent(
@@ -44,8 +66,9 @@ def create_agent(db: Session, org_id: uuid.UUID, payload: AgentCreate) -> tuple[
 
 
 def list_agents(db: Session, org_id: uuid.UUID) -> list[Agent]:
-    agents = db.scalars(select(Agent).where(Agent.org_id == org_id)).all()
-    return [_sweep_stale(db, agent) for agent in agents]
+    agents = list(db.scalars(select(Agent).where(Agent.org_id == org_id)).all())
+    _sweep_stale_batch(db, agents)
+    return agents
 
 
 def get_agent(db: Session, org_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
@@ -127,5 +150,15 @@ def delete_agent(db: Session, org_id: uuid.UUID, agent_id: uuid.UUID) -> None:
     # connected (or gets replaced) — log_sources.agent_id is nullable for
     # exactly this reason.
     db.execute(update(LogSource).where(LogSource.agent_id == agent.id).values(agent_id=None))
+    # Same rationale for ingested logs: they're audit/security-relevant
+    # history that must survive the agent being deleted — logs.agent_id is
+    # nullable for exactly this reason (see migration 0004).
+    db.execute(update(Log).where(Log.agent_id == agent.id).values(agent_id=None))
     db.delete(agent)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Could not delete agent: it still has associated records"
+        ) from exc
