@@ -1,0 +1,35 @@
+TruePositive Agent — End User License & Consent (TEMPLATE)
+============================================================
+
+THIS IS A PLACEHOLDER. It has not been reviewed by legal counsel and is not
+a binding agreement as written. Replace this file with real terms before
+distributing the installer outside a development/test environment.
+
+By installing and running the TruePositive Agent on this computer, you
+acknowledge and agree to the following:
+
+1. Purpose. The Agent collects security-relevant log data from this
+   computer (e.g. configured Windows Event Log channels or local log
+   files) and transmits it to the TruePositive backend instance configured
+   during setup, operated by your organization.
+
+2. Data collected. Only the log sources explicitly configured for this
+   agent by your organization's TruePositive administrators are collected.
+   No file contents, keystrokes, screenshots, or browsing history are
+   collected beyond what those configured log sources contain.
+
+3. Organization responsibility. Your organization is the data controller
+   for any information collected by this Agent. Questions about retention,
+   access, or deletion of collected data should be directed to your
+   organization's TruePositive administrator, not to TruePositive's
+   developers.
+
+4. No warranty. This software is provided "as is," without warranty of any
+   kind, express or implied, including but not limited to fitness for a
+   particular purpose.
+
+5. Uninstalling. You may uninstall the Agent at any time via Windows
+   Settings → Apps, or Control Panel → Programs and Features. Uninstalling
+   stops all log collection from this computer immediately.
+
+If you do not agree to these terms, do not proceed with installation.

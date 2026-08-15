@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { theme } from "../../styles/theme";
 import * as dashboardApi from "../../api/dashboard";
+import { listAgents } from "../../api/agents";
 import CriticalPanel from "./panels/CriticalPanel";
 import IngestionPanel from "./panels/IngestionPanel";
 import EventsPanel from "./panels/EventsPanel";
@@ -10,6 +11,7 @@ import RiskPanel from "./panels/RiskPanel";
 import SeverityPanel from "./panels/SeverityPanel";
 import RulePanel from "./panels/RulePanel";
 import EventTypePanel from "./panels/EventTypePanel";
+import AgentsPanel from "./panels/AgentsPanel";
 
 const STATIC_TITLES = {
   critical: "Critical alerts",
@@ -18,6 +20,7 @@ const STATIC_TITLES = {
   alerts: "Active alerts",
   triage: "Median triage (MTTR)",
   risk: "Risk score",
+  agents: "Agents",
 };
 
 function fetchPanel(panel, timeWindow) {
@@ -40,6 +43,8 @@ function fetchPanel(panel, timeWindow) {
       return dashboardApi.getRulePanel(panel.key);
     case "eventType":
       return dashboardApi.getEventTypePanel(panel.key);
+    case "agents":
+      return listAgents();
     default:
       return Promise.resolve(null);
   }
@@ -105,8 +110,24 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
     };
   }, [panel, timeWindow]);
 
+  // Every other panel type is a point-in-time snapshot the user reads once,
+  // but "agents" reflects live connect/disconnect status (see
+  // DashboardPage's own 30s poll for the same reason) — without this, a
+  // reconnect while this drawer is left open shows stale status until
+  // closed/reopened or the page is reloaded.
+  useEffect(() => {
+    if (panel.type !== "agents") return undefined;
+    const interval = setInterval(() => {
+      listAgents()
+        .then(setData)
+        .catch(() => {});
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [panel]);
+
   return (
     <div
+      className="tp-panel-in"
       style={{
         width: 420,
         flexShrink: 0,
@@ -133,10 +154,18 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
       >
         <h3 style={{ fontSize: 18, margin: 0 }}>{titleFor(panel, data)}</h3>
         <span
+          className="tp-panel-close"
           onClick={onClose}
           role="button"
           tabIndex={0}
-          style={{ fontSize: 22, lineHeight: 1, color: theme.color.textMuted, cursor: "pointer", padding: 2 }}
+          style={{
+            display: "inline-block",
+            fontSize: 22,
+            lineHeight: 1,
+            color: theme.color.textMuted,
+            cursor: "pointer",
+            padding: 2,
+          }}
         >
           ×
         </span>
@@ -160,9 +189,24 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
             {panel.type === "severity" && <SeverityPanel data={data} />}
             {panel.type === "rule" && <RulePanel data={data} />}
             {panel.type === "eventType" && <EventTypePanel data={data} />}
+            {panel.type === "agents" && <AgentsPanel data={data} />}
           </>
         )}
       </div>
+      {/* Hints there's more to scroll — sticks to the viewport bottom while
+          scrolling, so it doesn't eat into real content height (marginTop
+          cancels out the space it would otherwise reserve). */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "sticky",
+          bottom: 0,
+          height: 40,
+          marginTop: -40,
+          background: `linear-gradient(to bottom, transparent, ${theme.color.surface})`,
+          pointerEvents: "none",
+        }}
+      />
     </div>
   );
 }

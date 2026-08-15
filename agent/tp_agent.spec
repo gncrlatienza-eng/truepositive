@@ -22,11 +22,17 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='tp_agent',
+    name='truepositive-agent',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # Measured no meaningful cold-start difference from UPX on this build
+    # (both ~550-600ms average, well within run-to-run noise) and it didn't
+    # even shrink the file here — python313.dll and friends mostly aren't
+    # UPX-compressible. Left off anyway: packed executables are a known
+    # trigger for stricter antivirus/SmartScreen scrutiny on an unsigned,
+    # freshly-downloaded .exe, which isn't worth it for zero measured gain.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
@@ -35,4 +41,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['icon.ico'],
 )

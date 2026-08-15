@@ -127,6 +127,11 @@ def _top_alert_types(db: Session, org_id: uuid.UUID, limit: int = 5) -> tuple[li
 
 
 def _top_sources(db: Session, org_id: uuid.UUID, limit: int = 5) -> list[SourceRow]:
+    # Inner join is intentional here (unlike _recent_alerts' outerjoin):
+    # SourceRow.source_id/name are non-nullable, so an alert whose source was
+    # since deleted (Log.source_id -> NULL, see log_source_service's
+    # detach-don't-destroy pattern) has no source to attribute to a row in
+    # this breakdown and is excluded, rather than forcing a fake group.
     rows = db.execute(
         select(LogSource.id, LogSource.name, LogSource.host, func.count())
         .select_from(Alert)
@@ -183,6 +188,64 @@ def _hourly_log_buckets(db: Session, org_id: uuid.UUID, since: datetime) -> list
     return [HourBar(hour_label=_hour_label(bucket), count=count) for bucket, count in rows]
 
 
+# Bucketed by Alert.created_at (when it fired), not current status — these
+# feed KPI sparklines as a "pace of new activity" trend, distinct from the
+# active/non-resolved snapshot counts the KPI's headline value shows.
+def _hourly_alert_buckets(
+    db: Session, org_id: uuid.UUID, since: datetime, severity: Severity | None = None
+) -> list[HourBar]:
+    stmt = select(func.date_trunc("hour", Alert.created_at), func.count()).where(
+        Alert.org_id == org_id, Alert.created_at >= since
+    )
+    if severity is not None:
+        stmt = stmt.where(Alert.severity == severity)
+    rows = db.execute(
+        stmt.group_by(func.date_trunc("hour", Alert.created_at)).order_by(func.date_trunc("hour", Alert.created_at))
+    ).all()
+    return [HourBar(hour_label=_hour_label(bucket), count=count) for bucket, count in rows]
+
+
+def _hourly_risk_buckets(db: Session, org_id: uuid.UUID, since: datetime) -> list[HourBar]:
+    rows = db.execute(
+        select(func.date_trunc("hour", Alert.created_at), Alert.severity, func.count())
+        .where(Alert.org_id == org_id, Alert.created_at >= since)
+        .group_by(func.date_trunc("hour", Alert.created_at), Alert.severity)
+        .order_by(func.date_trunc("hour", Alert.created_at))
+    ).all()
+    scores: dict[datetime, float] = {}
+    for bucket, severity, count in rows:
+        scores[bucket] = scores.get(bucket, 0.0) + count * RISK_WEIGHTS[severity]
+    # HourBar.count is an int (shared with real event/alert counts elsewhere)
+    # — round rather than widen the shared schema just for this one sparkline.
+    return [HourBar(hour_label=_hour_label(bucket), count=round(v)) for bucket, v in scores.items()]
+
+
+# Same weighted formula as _risk_score, but over alerts *created* in a given
+# window rather than the currently-active/non-resolved snapshot — answers
+# "how much risk arrived in this period," used only for the KPI's delta.
+def _weighted_score_for_period(db: Session, org_id: uuid.UUID, since: datetime, until: datetime | None = None) -> float:
+    stmt = select(Alert.severity, func.count()).where(Alert.org_id == org_id, Alert.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(Alert.created_at < until)
+    rows = db.execute(stmt.group_by(Alert.severity)).all()
+    return round(sum(count * RISK_WEIGHTS[sev] for sev, count in rows), 1)
+
+
+def _count_alerts(
+    db: Session,
+    org_id: uuid.UUID,
+    since: datetime,
+    until: datetime | None = None,
+    severity: Severity | None = None,
+) -> int:
+    stmt = select(func.count()).select_from(Alert).where(Alert.org_id == org_id, Alert.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(Alert.created_at < until)
+    if severity is not None:
+        stmt = stmt.where(Alert.severity == severity)
+    return db.scalar(stmt) or 0
+
+
 def _ingest_summary(db: Session, org_id: uuid.UUID, window: Window) -> IngestSummary:
     now = datetime.now(UTC)
     since = now - _WINDOW_DELTAS[window]
@@ -230,6 +293,7 @@ def _ingest_summary(db: Session, org_id: uuid.UUID, window: Window) -> IngestSum
 def get_summary(db: Session, org_id: uuid.UUID, window: Window = "24h") -> DashboardSummary:
     now = datetime.now(UTC)
     since = now - _WINDOW_DELTAS[window]
+    prev_since = since - _WINDOW_DELTAS[window]  # equal-length window immediately before `since`, for KPI deltas
 
     online, total_agents = agent_service.count_online(db, org_id)
     events_per_min = float(
@@ -247,6 +311,14 @@ def get_summary(db: Session, org_id: uuid.UUID, window: Window = "24h") -> Dashb
     window_events = (
         db.scalar(select(func.count()).select_from(Log).where(Log.org_id == org_id, Log.timestamp >= since)) or 0
     )
+    prev_window_events = (
+        db.scalar(
+            select(func.count())
+            .select_from(Log)
+            .where(Log.org_id == org_id, Log.timestamp >= prev_since, Log.timestamp < since)
+        )
+        or 0
+    )
     active_alerts = (
         db.scalar(
             select(func.count()).select_from(Alert).where(Alert.org_id == org_id, Alert.status != AlertStatus.RESOLVED)
@@ -263,45 +335,72 @@ def get_summary(db: Session, org_id: uuid.UUID, window: Window = "24h") -> Dashb
     )
     risk = _risk_score(db, org_id)
 
+    # active_alerts/critical_alerts/risk above are current snapshots (no
+    # history table to compare "as of the start of the window" against), so
+    # their KPI deltas instead compare the *pace of new alerts* this window
+    # vs the equal-length window before it — still a real, deterministic
+    # signal, just answering "is it trending up" rather than "vs itself
+    # earlier."
+    alerts_created_window = _count_alerts(db, org_id, since)
+    alerts_created_prev = _count_alerts(db, org_id, prev_since, since)
+    critical_created_window = _count_alerts(db, org_id, since, severity=Severity.CRITICAL)
+    critical_created_prev = _count_alerts(db, org_id, prev_since, since, severity=Severity.CRITICAL)
+    risk_window_score = _weighted_score_for_period(db, org_id, since)
+    risk_prev_score = _weighted_score_for_period(db, org_id, prev_since, since)
+
     severity_breakdown, _ = _severity_breakdown(db, org_id)
     top_alert_types, _ = _top_alert_types(db, org_id)
     ingest = _ingest_summary(db, org_id, window)
+    events_hourly = _hourly_log_buckets(db, org_id, since)  # shared by the Events and Ingestion rate sparklines
 
     kpis = [
         KpiCard(
             key="events",
             label="Events",
             value=f"{window_events:,}",
-            delta=None,
+            delta=_pct_change(window_events, prev_window_events),
             delta_color=None,
-            sparkline=[float(b.count) for b in _hourly_log_buckets(db, org_id, since)],
+            sparkline=events_hourly,
         ),
         KpiCard(
-            key="alerts", label="Active alerts", value=str(active_alerts), delta=None, delta_color=None, sparkline=[]
+            key="alerts",
+            label="Active alerts",
+            value=str(active_alerts),
+            delta=_pct_change(alerts_created_window, alerts_created_prev),
+            delta_color=None,
+            sparkline=_hourly_alert_buckets(db, org_id, since),
         ),
         KpiCard(
             key="critical",
             label="Critical",
             value=str(critical_alerts),
-            delta=None,
+            delta=_pct_change(critical_created_window, critical_created_prev),
             delta_color="#dc2626" if critical_alerts else None,
-            sparkline=[],
+            sparkline=_hourly_alert_buckets(db, org_id, since, severity=Severity.CRITICAL),
         ),
         KpiCard(
             key="ingestion",
             label="Ingestion rate",
             value=f"{events_per_min:.0f}/min",
-            delta=None,
+            delta=ingest.delta_vs_previous_pct,
             delta_color=None,
-            sparkline=[],
+            sparkline=events_hourly,
         ),
         KpiCard(
             key="risk",
             label="Risk score",
-            value=f"{risk.score:.1f} · {risk.level}",
-            delta=None,
+            # Only show a decimal when the weighted score actually has one —
+            # whole scores (common, since OK-severity logs rarely generate
+            # alerts) previously always rendered as e.g. "150.0", which reads
+            # as an unpolished placeholder rather than a real weighted value.
+            value=(
+                f"{risk.score:.0f} · {risk.level}"
+                if risk.score == round(risk.score)
+                else f"{risk.score:.1f} · {risk.level}"
+            ),
+            delta=_pct_change(risk_window_score, risk_prev_score),
             delta_color=None,
-            sparkline=[],
+            sparkline=_hourly_risk_buckets(db, org_id, since),
         ),
     ]
 
@@ -416,8 +515,14 @@ def get_events_panel(db: Session, org_id: uuid.UUID, window: Window = "24h") -> 
         .order_by(func.count().desc())
         .limit(5)
     ).all()
+    # pct relative to these rows' own sum, not `total` (all logs in the
+    # window) — a log's source_id can be null if its source was since
+    # deleted (detach-don't-destroy), and those logs have no source to
+    # attribute here; comparing against `total` would understate every row's
+    # percentage without explaining why. Same convention as _top_sources.
+    source_total = sum(count for *_rest, count in source_rows)
     by_source = [
-        SourceRow(source_id=source_id, name=name, host=host, count=count, pct=_pct(count, total))
+        SourceRow(source_id=source_id, name=name, host=host, count=count, pct=_pct(count, source_total))
         for source_id, name, host, count in source_rows
     ]
 
@@ -534,8 +639,12 @@ def get_severity_panel(db: Session, org_id: uuid.UUID, severity: Severity) -> Se
         .order_by(func.count().desc())
         .limit(5)
     ).all()
+    # pct relative to these rows' own sum, not `count` (total active alerts
+    # of this severity) — see _top_sources for why alerts with a since-
+    # deleted source are excluded here rather than skewing the percentages.
+    source_total = sum(c for *_rest, c in source_rows)
     by_source = [
-        SourceRow(source_id=sid, name=name, host=host, count=c, pct=_pct(c, count))
+        SourceRow(source_id=sid, name=name, host=host, count=c, pct=_pct(c, source_total))
         for sid, name, host, c in source_rows
     ]
 
@@ -614,8 +723,12 @@ def get_rule_panel(db: Session, org_id: uuid.UUID, rule_id: uuid.UUID) -> RulePa
         .order_by(func.count().desc())
         .limit(5)
     ).all()
+    # pct relative to these rows' own sum, not count_today (a different,
+    # source-agnostic count) — see _top_sources for why alerts with a since-
+    # deleted source are excluded here rather than skewing the percentages.
+    source_total = sum(c for *_rest, c in source_rows) or 1
     top_sources = [
-        SourceRow(source_id=sid, name=name, host=host, count=c, pct=_pct(c, count_today or 1))
+        SourceRow(source_id=sid, name=name, host=host, count=c, pct=_pct(c, source_total))
         for sid, name, host, c in source_rows
     ]
 

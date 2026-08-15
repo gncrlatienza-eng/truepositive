@@ -9,9 +9,22 @@ export async function downloadWindowsAgent({ id, key, url = api.defaults.baseURL
   const blobUrl = window.URL.createObjectURL(response.data);
   const link = document.createElement("a");
   link.href = blobUrl;
-  link.download = "tp_agent.exe";
+  link.download = "truepositive-agent.exe";
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.URL.revokeObjectURL(blobUrl);
+}
+
+// The primary Windows download: a real installer, generic for every org
+// (no per-agent config baked in, unlike downloadWindowsAgent above — the
+// installed app asks for it on first launch instead). No auth header
+// needed, so a plain link works, unlike the POST/blob dance above.
+export function downloadWindowsInstaller() {
+  const link = document.createElement("a");
+  link.href = `${api.defaults.baseURL}/agents/download/windows-installer`;
+  link.download = "truepositive-agent-setup.exe";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }

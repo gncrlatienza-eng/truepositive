@@ -3,36 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { theme } from "../../styles/theme";
 import { Field, Select, TextInput, OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { createSource } from "../../api/sources";
+import LocalSourcePicker from "../settings/LocalSourcePicker";
 
-const SOURCES = [
-  {
-    id: "security",
-    name: "Windows Security Event Log",
-    path: "Security.evtx",
-    vol: "12k/day",
-    tag: "High Volume",
-    tagColor: "high",
-  },
-  {
-    id: "sysmon",
-    name: "Sysmon",
-    path: "Microsoft-Windows-Sysmon/Operational",
-    vol: "4.2k/day",
-    tag: "Recommended",
-    tagColor: "ok",
-  },
-  {
-    id: "powershell",
-    name: "PowerShell Operational",
-    path: "Microsoft-Windows-PowerShell/Operational",
-    vol: "800/day",
-    tag: "Recommended",
-    tagColor: "ok",
-  },
-  { id: "system", name: "System Event Log", path: "System.evtx", vol: "3k/day", tag: "Low Volume", tagColor: "medium" },
-];
-
-export default function OnboardingStep3({ onBack, agentId }) {
+export default function OnboardingStep3({ onBack, agentId, platform = "windows" }) {
   const navigate = useNavigate();
   const [mode, setMode] = useState("local");
   const [remote, setRemote] = useState({
@@ -43,27 +16,21 @@ export default function OnboardingStep3({ onBack, agentId }) {
     authMethod: "ssh_key",
     credential: "",
   });
-  const [selected, setSelected] = useState({ security: true, sysmon: true, powershell: false, system: false });
+  const [localSources, setLocalSources] = useState([]);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
-
-  const selectedSources = SOURCES.filter((s) => selected[s.id]);
 
   const modeHint =
     mode === "local"
       ? "Collects from this host directly. No credentials needed."
       : "Connects to a remote host over the network using the credentials below.";
 
-  function toggleSource(id) {
-    setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
-  }
-
   async function startCollection() {
     setError("");
     setStarting(true);
     try {
       if (mode === "local") {
-        for (const s of selectedSources) {
+        for (const s of localSources) {
           await createSource({ name: s.name, type: "local", agent_id: agentId || null, path: s.path, tags: [] });
         }
       } else {
@@ -214,44 +181,7 @@ export default function OnboardingStep3({ onBack, agentId }) {
             marginBottom: theme.space[5],
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: theme.space[4] }}>
-            <h3 style={{ margin: 0, fontSize: 18 }}>Available log sources</h3>
-            <span style={{ fontSize: 13, color: theme.color.textMuted }}>
-              {selectedSources.length} of {SOURCES.length} selected
-            </span>
-          </div>
-          {SOURCES.map((s) => (
-            <label
-              key={s.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: theme.space[3],
-                padding: `${theme.space[3]}px 0`,
-                borderBottom: `1px solid ${theme.color.border}`,
-                cursor: "pointer",
-              }}
-            >
-              <input type="checkbox" checked={!!selected[s.id]} onChange={() => toggleSource(s.id)} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15 }}>{s.name}</div>
-                <div style={{ fontSize: 13, color: theme.color.textFaint, fontFamily: theme.font.mono }}>{s.path}</div>
-              </div>
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 500,
-                  padding: "3px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${theme.color.severity[s.tagColor]}`,
-                  color: theme.color.severity[s.tagColor],
-                }}
-              >
-                {s.tag}
-              </span>
-              <span style={{ fontSize: 13, color: theme.color.textMuted, width: 70, textAlign: "right" }}>{s.vol}</span>
-            </label>
-          ))}
+          <LocalSourcePicker key={platform} platform={platform} onChange={setLocalSources} />
         </div>
       )}
 
@@ -281,17 +211,10 @@ export default function OnboardingStep3({ onBack, agentId }) {
           Back
         </OutlineButton>
         <div style={{ display: "flex", alignItems: "center", gap: theme.space[4] }}>
-          {mode === "local" && (
-            <span style={{ fontSize: 13, color: theme.color.textFaint }}>
-              {selectedSources.length} source{selectedSources.length === 1 ? "" : "s"} selected
-            </span>
-          )}
           <PrimaryButton
             type="button"
             style={{ width: "auto" }}
-            disabled={
-              starting || (mode === "local" ? selectedSources.length === 0 : !remote.host || !remote.credential)
-            }
+            disabled={starting || (mode === "local" ? localSources.length === 0 : !remote.host || !remote.credential)}
             onClick={startCollection}
           >
             {starting ? "Starting…" : "Start collection"}

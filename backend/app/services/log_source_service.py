@@ -1,12 +1,15 @@
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.agent import Agent
-from app.models.log_source import LogSource, LogSourceStatus
-from app.schemas.log_sources import LogSourceCreate, LogSourceUpdate
+from app.models.log import Log
+from app.models.log_source import LogSource, LogSourceStatus, LogSourceType
+from app.schemas.log_sources import LogSourceCreate, LogSourceUpdate, SourceStatusReportRequest
 from app.utils.crypto import encrypt_secret
 
 
@@ -76,5 +79,57 @@ def update_log_source(db: Session, org_id: uuid.UUID, source_id: uuid.UUID, payl
 
 def delete_log_source(db: Session, org_id: uuid.UUID, source_id: uuid.UUID) -> None:
     source = get_log_source(db, org_id, source_id)
+    # Detach rather than cascade-delete: the logs this source already shipped
+    # are audit/security-relevant history that must survive it being removed
+    # — logs.source_id is nullable for exactly this reason (see migration 0005).
+    db.execute(update(Log).where(Log.source_id == source.id).values(source_id=None))
     db.delete(source)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Could not delete data source: it still has associated records"
+        ) from exc
+
+
+# Local-only by design: real collection this sprint only reads the agent's
+# own host (Windows Event Log channels / local files), never a remote SSH
+# target, so remote sources are deliberately excluded here.
+def list_active_local_sources_for_agent(db: Session, agent_id: uuid.UUID) -> list[LogSource]:
+    return list(
+        db.scalars(
+            select(LogSource).where(
+                LogSource.agent_id == agent_id,
+                LogSource.status == LogSourceStatus.ACTIVE,
+                LogSource.type == LogSourceType.LOCAL,
+            )
+        ).all()
+    )
+
+
+def report_source_status(db: Session, agent: Agent, payload: SourceStatusReportRequest) -> int:
+    source_ids = {item.source_id for item in payload.results}
+    owned_sources = db.scalars(
+        select(LogSource.id).where(LogSource.id.in_(source_ids), LogSource.agent_id == agent.id)
+    ).all()
+    unknown = source_ids - set(owned_sources)
+    if unknown:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Source id(s) not assigned to this agent: {', '.join(str(u) for u in sorted(unknown, key=str))}",
+        )
+
+    now = datetime.now(UTC)
+    for item in payload.results:
+        db.execute(
+            update(LogSource)
+            .where(LogSource.id == item.source_id)
+            .values(
+                last_collected_at=now,
+                last_status=item.status,
+                last_status_reason=item.reason if item.status == "error" else None,
+            )
+        )
     db.commit()
+    return len(payload.results)

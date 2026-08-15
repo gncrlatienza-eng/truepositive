@@ -1,6 +1,6 @@
 # TruePositive
 
-Log analysis and alert triage for security teams. TruePositive ingests Windows, syslog, and Sysmon events, scores them against tunable rules, and surfaces only the alerts that deserve an analyst's attention — instead of a nightly flood of noise.
+**Goal: a beginner-friendly SIEM** — log analysis and alert triage built to teach people new to security operations how detection actually works, not just another enterprise console tuned for veteran analysts. Real SIEMs (Splunk, Sentinel, QRadar) bury newcomers under configuration and jargon before they ever see a useful alert; TruePositive aims for the same core workflow — ingest events, score them against tunable rules, surface only what deserves attention — with a UI and onboarding path a new learner can actually follow.
 
 > Status: early scaffold. See [`docs/SPRINT_PLAN.md`](docs/SPRINT_PLAN.md) for the active 8-week build plan and what's implemented so far.
 
@@ -74,7 +74,7 @@ No `.env.example` is committed — copy the table below into a `.env` file yours
 
 Inside `docker-compose.yml`, `DATABASE_URL` for the `backend` service is already set to point at the `postgres` container — your `.env`'s `DATABASE_URL` only needs to be correct for running the backend standalone (outside Docker).
 
-**Agent download** (dashboard's "Deploy agent" flow): `GET /agents/download/windows` serves `agent/dist/tp_agent.exe`, a locally-built binary that's gitignored, not committed — build it once with `pip install pyinstaller && pyinstaller --onefile --noconsole --name tp_agent agent/tp_agent.py` (see `agent/README.md`). The endpoint 404s with a helpful message until it exists; nothing else in the stack depends on it being built.
+**Agent download** (dashboard's "Deploy agent" flow): `GET /agents/download/windows` serves `agent/dist/truepositive-agent.exe`, a locally-built binary that's gitignored, not committed — build it once with `pip install pyinstaller && cd agent && pyinstaller tp_agent.spec` (see `agent/README.md`; the tracked `.spec` records the exact build config, including the icon and app name, so build from it rather than a bare `pyinstaller tp_agent.py`). The endpoint 404s with a helpful message until it exists; nothing else in the stack depends on it being built.
 
 ## Project Structure
 

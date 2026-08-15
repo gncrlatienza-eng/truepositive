@@ -7,6 +7,10 @@ export default function CriticalPanel({ data }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <BigStat value={data.count} label="critical alerts active" color={theme.color.severity.critical} />
+      <div style={{ fontSize: 13, color: theme.color.textFaint, lineHeight: 1.5 }}>
+        SLA: a critical alert should get a first action — ack, escalate, or resolve — within 15 minutes of firing. Older
+        than that counts as breached.
+      </div>
       {data.oldest_title && (
         <div
           style={{

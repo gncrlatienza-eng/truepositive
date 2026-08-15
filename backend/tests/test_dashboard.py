@@ -148,6 +148,38 @@ def test_risk_score_formula(client, auth_headers, db_session):
     assert data["level"] == "Low"
 
 
+def test_kpi_deltas_compare_against_previous_equal_window(client, auth_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    rule = AlertRule(org_id=org_id, name="r", conditions={}, severity=Severity.HIGH, enabled=True)
+    db_session.add(rule)
+    db_session.flush()
+
+    now = datetime.now(UTC)
+    # 2 alerts in the current 24h window, 1 alert just outside it (in the
+    # previous 24h window) — delta should be +100% (2 vs 1), not None/0.
+    db_session.add_all(
+        [
+            Alert(org_id=org_id, rule_id=rule.id, severity=Severity.HIGH, status=AlertStatus.OPEN, title="new1"),
+            Alert(org_id=org_id, rule_id=rule.id, severity=Severity.HIGH, status=AlertStatus.OPEN, title="new2"),
+        ]
+    )
+    db_session.flush()
+    old_alert = Alert(org_id=org_id, rule_id=rule.id, severity=Severity.HIGH, status=AlertStatus.OPEN, title="old")
+    db_session.add(old_alert)
+    db_session.flush()
+    old_alert.created_at = now - timedelta(hours=30)
+    db_session.flush()
+
+    data = client.get("/dashboard/summary", headers=auth_headers).json()
+    kpi_by_key = {k["key"]: k for k in data["kpis"]}
+    assert kpi_by_key["alerts"]["delta"] == 100.0
+    assert len(kpi_by_key["alerts"]["sparkline"]) >= 1
+    # Ingestion rate's delta is None with zero logs on both sides (no
+    # previous total to compare against) — _pct_change returns None for a
+    # zero denominator rather than a misleading 0%.
+    assert kpi_by_key["ingestion"]["delta"] is None
+
+
 def test_triage_panel_empty_when_no_status_transitions(client, auth_headers, db_session):
     org_id = _org_id(client, auth_headers)
     rule = AlertRule(org_id=org_id, name="r", conditions={}, severity=Severity.HIGH, enabled=True)
