@@ -128,3 +128,62 @@ def test_cross_org_alert_404(client, auth_headers, second_org_headers, db_sessio
 
     response = client.get(f"/alerts/{alert.id}", headers=second_org_headers)
     assert response.status_code == 404
+
+
+def test_list_alerts_search_and_log_id_filter(client, auth_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    db_session.add_all(
+        [
+            Alert(
+                org_id=org_id,
+                severity=Severity.HIGH,
+                status=AlertStatus.OPEN,
+                title="Obfuscated PowerShell command",
+                log_id=101,
+            ),
+            Alert(
+                org_id=org_id,
+                severity=Severity.MEDIUM,
+                status=AlertStatus.OPEN,
+                title="Port scan detected",
+                description="A network share object was accessed",
+                log_id=202,
+            ),
+        ]
+    )
+    db_session.flush()
+
+    by_title = client.get("/alerts", params={"q": "PowerShell"}, headers=auth_headers).json()
+    assert by_title["total"] == 1
+    assert by_title["items"][0]["title"] == "Obfuscated PowerShell command"
+
+    by_description = client.get("/alerts", params={"q": "network share"}, headers=auth_headers).json()
+    assert by_description["total"] == 1
+    assert by_description["items"][0]["title"] == "Port scan detected"
+
+    by_log_id = client.get("/alerts", params={"log_id": 202}, headers=auth_headers).json()
+    assert by_log_id["total"] == 1
+    assert by_log_id["items"][0]["title"] == "Port scan detected"
+
+
+def test_alerts_export_csv(client, auth_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    alert = Alert(org_id=org_id, severity=Severity.CRITICAL, status=AlertStatus.OPEN, title="csv row alert")
+    db_session.add(alert)
+    db_session.flush()
+
+    response = client.get("/alerts/export.csv", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "csv row alert" in response.text
+    assert response.text.splitlines()[0] == "id,created_at,severity,status,title,rule_id,log_id,assignee_id"
+
+
+def test_alerts_export_csv_cross_org_isolation(client, auth_headers, second_org_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    alert = Alert(org_id=org_id, severity=Severity.HIGH, status=AlertStatus.OPEN, title="only-mine")
+    db_session.add(alert)
+    db_session.flush()
+
+    response = client.get("/alerts/export.csv", headers=second_org_headers)
+    assert "only-mine" not in response.text

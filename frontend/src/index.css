@@ -715,8 +715,17 @@ input[type="checkbox"] {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #9ca3af;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid #2d3748;
+  /* Solid, not the translucent tint this used to be — position: sticky
+     needs an opaque background or scrolled-past rows show through it. The
+     table's own rows scroll underneath this pinned header now (Table.jsx),
+     so this can no longer be a see-through overlay. #1e2333 approximates
+     the card surface (#1A1E2E) blended with the old 2%-white tint. */
+  background: #1e2333;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   white-space: nowrap;
 }
 
@@ -725,14 +734,25 @@ input[type="checkbox"] {
   user-select: none;
 }
 
+.tp-table th[data-sortable="true"]:hover {
+  color: #e8eaed;
+}
+
 .tp-table td {
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid #2d3748;
   vertical-align: middle;
 }
 
+/* Subtle zebra striping — Logs/Alerts are dense, 20-row-per-page tables,
+   and a flat background made every row blend together at a glance. Faint
+   enough not to fight the severity/status badges for attention. */
+.tp-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
 .tp-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(8, 145, 178, 0.08);
 }
 
 .tp-toast-viewport {

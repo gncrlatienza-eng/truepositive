@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
+import { BookOpen } from "lucide-react";
 import { theme } from "../styles/theme";
-import { listAlerts, listRules, updateAlert } from "../api/alerts";
+import { exportAlertsCsv, listAlerts, listRules, updateAlert } from "../api/alerts";
 import { SetupLockOverlay } from "../components/common/SetupLockOverlay";
 import { Card } from "../components/common/Card";
 import { Button } from "../components/common/Button";
-import { FieldLabel, Select } from "../components/common/Input";
+import { FieldLabel, Select, TextInput } from "../components/common/Input";
 import { Badge, SeverityBadge } from "../components/common/Badge";
 import { Table } from "../components/common/Table";
 import AlertDetailModal from "../components/alerts/AlertDetailModal";
 import { formatTimestamp } from "../utils/format";
 import { useToast } from "../components/common/Toast";
 import { useAuth } from "../context/AuthContext";
+import { getEventGuide } from "../data/eventGuides";
 
-const FETCH_LIMIT = 100;
+const PAGE_SIZE = 20;
+const REFRESH_INTERVAL_MS = 30_000;
 const STATUS_COLORS = {
   open: theme.color.textMuted,
   ack: theme.color.accent,
@@ -29,28 +32,43 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
   const [ruleId, setRuleId] = useState("");
   const [mineOnly, setMineOnly] = useState(false);
+  // Real server-side pagination — see LogsPage.jsx's PAGE_SIZE comment for
+  // why this matters once an org has more than one page's worth of alerts.
+  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState(null);
+  // Bulk-select, scoped to the current page only (same as RulesTab's own
+  // bulk-select) — a Set of alert ids, not tied to sortedRows/pagination
+  // internals since Table.jsx owns those.
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const ruleNameById = Object.fromEntries(rules.map((r) => [r.id, r.name]));
+  const ruleById = Object.fromEntries(rules.map((r) => [r.id, r]));
 
-  const refresh = useCallback(() => {
-    setLoading(true);
-    const params = { limit: FETCH_LIMIT };
-    if (status) params.status = status;
-    if (severity) params.severity = severity;
-    if (ruleId) params.rule_id = ruleId;
-    if (mineOnly && user) params.assignee_id = user.id;
-    return listAlerts(params)
-      .then((data) => {
-        setAlerts(data.items);
-        setTotal(data.total);
-      })
-      .finally(() => setLoading(false));
-  }, [status, severity, ruleId, mineOnly, user]);
+  const refresh = useCallback(
+    (silent = false) => {
+      if (!silent) setLoading(true);
+      const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
+      if (q) params.q = q;
+      if (status) params.status = status;
+      if (severity) params.severity = severity;
+      if (ruleId) params.rule_id = ruleId;
+      if (mineOnly && user) params.assignee_id = user.id;
+      return listAlerts(params)
+        .then((data) => {
+          setAlerts(data.items);
+          setTotal(data.total);
+        })
+        .finally(() => {
+          if (!silent) setLoading(false);
+        });
+    },
+    [q, status, severity, ruleId, mineOnly, user, page],
+  );
 
   useEffect(() => {
     listRules()
@@ -60,6 +78,15 @@ export default function AlertsPage() {
 
   useEffect(() => {
     refresh().catch(() => showToast("Could not load alerts.", "error"));
+    setSelectedIds(new Set());
+
+    // Silent background refresh — matches Overview's own 30s cadence, so a
+    // new critical alert shows up here without a manual reload during
+    // active triage, the exact scenario a static list is worst at.
+    const interval = setInterval(() => {
+      refresh(true).catch(() => {});
+    }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [refresh, showToast]);
 
   async function applyUpdate(alertId, payload) {
@@ -72,7 +99,57 @@ export default function AlertsPage() {
     }
   }
 
+  // Fires the existing single-item PATCH in parallel for each selected id —
+  // same approach RulesTab.jsx's bulk enable/disable/delete already
+  // established, rather than adding a dedicated bulk endpoint for this.
+  async function bulkSetStatus(newStatus) {
+    const ids = [...selectedIds];
+    try {
+      const updated = await Promise.all(ids.map((id) => updateAlert(id, { status: newStatus })));
+      const byId = Object.fromEntries(updated.map((a) => [a.id, a]));
+      setAlerts((prev) => prev.map((a) => byId[a.id] || a));
+      setSelectedIds(new Set());
+    } catch {
+      showToast("Could not update the selected alerts.", "error");
+    }
+  }
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleExport() {
+    try {
+      const params = {};
+      if (q) params.q = q;
+      if (status) params.status = status;
+      if (severity) params.severity = severity;
+      if (ruleId) params.rule_id = ruleId;
+      if (mineOnly && user) params.assignee_id = user.id;
+      await exportAlertsCsv(params);
+    } catch {
+      showToast("Could not export alerts.", "error");
+    }
+  }
+
   const columns = [
+    {
+      key: "select",
+      label: "",
+      render: (r) => (
+        <input
+          type="checkbox"
+          checked={selectedIds.has(r.id)}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => toggleSelected(r.id)}
+        />
+      ),
+    },
     {
       key: "created_at",
       label: "Created",
@@ -82,7 +159,21 @@ export default function AlertsPage() {
     },
     { key: "severity", label: "Severity", sortable: true, render: (r) => <SeverityBadge severity={r.severity} /> },
     { key: "title", label: "Title" },
-    { key: "rule", label: "Rule", render: (r) => (r.rule_id ? ruleNameById[r.rule_id] || "—" : "—") },
+    {
+      key: "rule",
+      label: "Rule",
+      render: (r) => {
+        const eventType = r.rule_id ? ruleById[r.rule_id]?.conditions?.event_type : null;
+        return (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {r.rule_id ? ruleNameById[r.rule_id] || "—" : "—"}
+            {eventType && getEventGuide(eventType) && (
+              <BookOpen size={12} color={theme.color.textFaint} title="A learning guide is available for this event" />
+            )}
+          </span>
+        );
+      },
+    },
     {
       key: "status",
       label: "Status",
@@ -110,25 +201,67 @@ export default function AlertsPage() {
 
   return (
     <SetupLockOverlay variant="compact">
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: theme.space[7] }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ marginBottom: theme.space[6] }}>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: theme.color.textMuted,
-                letterSpacing: "0.07em",
-                textTransform: "uppercase",
-                marginBottom: 9,
-              }}
-            >
-              Alerts
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          padding: theme.space[7],
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1200,
+            width: "100%",
+            margin: "0 auto",
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              marginBottom: theme.space[6],
+              flexShrink: 0,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: theme.color.textMuted,
+                  letterSpacing: "0.07em",
+                  textTransform: "uppercase",
+                  marginBottom: 9,
+                }}
+              >
+                Alerts
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                <h1 style={{ fontSize: 34, letterSpacing: "-0.025em", margin: 0 }}>Active alerts</h1>
+                {!loading && (
+                  <Badge color={theme.color.accent}>
+                    {total.toLocaleString()} {total === 1 ? "alert" : "alerts"}
+                  </Badge>
+                )}
+              </div>
             </div>
-            <h1 style={{ fontSize: 34, letterSpacing: "-0.025em", margin: 0 }}>Active alerts</h1>
+            <Button variant="secondary" onClick={handleExport}>
+              Export CSV
+            </Button>
           </div>
 
-          <Card>
+          <Card
+            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+            bodyStyle={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+          >
             <div
               style={{
                 display: "flex",
@@ -137,11 +270,30 @@ export default function AlertsPage() {
                 gap: theme.space[4],
                 padding: theme.space[4],
                 borderBottom: `1px solid ${theme.color.border}`,
+                flexShrink: 0,
               }}
             >
+              <div style={{ flex: "2 1 200px", minWidth: 180 }}>
+                <FieldLabel label="Search">
+                  <TextInput
+                    placeholder="Search alert title or description…"
+                    value={q}
+                    onChange={(e) => {
+                      setQ(e.target.value);
+                      setPage(0);
+                    }}
+                  />
+                </FieldLabel>
+              </div>
               <div style={{ flex: "1 1 140px", minWidth: 140 }}>
                 <FieldLabel label="Status">
-                  <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <Select
+                    value={status}
+                    onChange={(e) => {
+                      setStatus(e.target.value);
+                      setPage(0);
+                    }}
+                  >
                     <option value="">All</option>
                     <option value="open">Open</option>
                     <option value="ack">Ack</option>
@@ -152,7 +304,13 @@ export default function AlertsPage() {
               </div>
               <div style={{ flex: "1 1 140px", minWidth: 140 }}>
                 <FieldLabel label="Severity">
-                  <Select value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                  <Select
+                    value={severity}
+                    onChange={(e) => {
+                      setSeverity(e.target.value);
+                      setPage(0);
+                    }}
+                  >
                     <option value="">All</option>
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
@@ -163,7 +321,13 @@ export default function AlertsPage() {
               </div>
               <div style={{ flex: "1 1 200px", minWidth: 200 }}>
                 <FieldLabel label="Rule">
-                  <Select value={ruleId} onChange={(e) => setRuleId(e.target.value)}>
+                  <Select
+                    value={ruleId}
+                    onChange={(e) => {
+                      setRuleId(e.target.value);
+                      setPage(0);
+                    }}
+                  >
                     <option value="">All rules</option>
                     {rules.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -177,30 +341,60 @@ export default function AlertsPage() {
                 <label
                   style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}
                 >
-                  <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={mineOnly}
+                    onChange={(e) => {
+                      setMineOnly(e.target.checked);
+                      setPage(0);
+                    }}
+                  />
                   Assigned to me
                 </label>
               </div>
             </div>
+
+            {selectedIds.size > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: theme.space[3],
+                  padding: theme.space[3],
+                  margin: theme.space[4],
+                  marginBottom: 0,
+                  background: "rgba(8, 145, 178, 0.08)",
+                  border: `1px solid ${theme.color.accent}`,
+                  borderRadius: theme.radius.md,
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: 13 }}>{selectedIds.size} selected</span>
+                <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("ack")}>
+                  Ack
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("escalated")}>
+                  Escalate
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => bulkSetStatus("resolved")}>
+                  Resolve
+                </Button>
+              </div>
+            )}
 
             {!loading && (
               <Table
                 columns={columns}
                 rows={alerts}
                 rowKey={(row) => row.id}
-                pageSize={20}
                 emptyMessage="No alerts match these filters."
                 onRowClick={setSelected}
+                page={page}
+                pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+                onPageChange={setPage}
               />
             )}
           </Card>
-
-          {total > alerts.length && (
-            <div style={{ marginTop: theme.space[3], fontSize: 13, color: theme.color.textFaint }}>
-              Showing {alerts.length} of {total} matching alerts — narrow the filters above to see more specific
-              results.
-            </div>
-          )}
         </div>
 
         <AlertDetailModal
@@ -208,6 +402,7 @@ export default function AlertsPage() {
           onClose={() => setSelected(null)}
           alert={selected}
           ruleName={selected?.rule_id ? ruleNameById[selected.rule_id] : null}
+          eventType={selected?.rule_id ? ruleById[selected.rule_id]?.conditions?.event_type : null}
           onUpdate={(payload) => selected && applyUpdate(selected.id, payload)}
         />
       </div>

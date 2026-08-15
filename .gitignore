@@ -63,8 +63,15 @@ Thumbs.db
 # Logs & temp files
 # ==============================
 *.log
-logs/
-tmp/
+# Root-anchored (not "logs/") — an unanchored pattern here silently matched
+# frontend/src/components/logs/ too, which meant `git add -A` never staged a
+# real, already-built component (LogDetailModal.jsx) despite it existing on
+# disk and being imported by LogsPage.jsx — invisible locally (the file was
+# still there for `npm run build` to resolve), only surfaced as a Linux CI
+# build failure ("Could not resolve ... LogDetailModal") since a fresh clone
+# never had the file at all.
+/logs/
+/tmp/
 *.tmp
 
 # ==============================

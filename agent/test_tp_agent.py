@@ -66,3 +66,46 @@ def test_validate_connect_fields_trims_and_normalizes():
         "  http://localhost:8000/  ", "  agent-1  ", "  key-1  "
     )
     assert result == {"url": "http://localhost:8000", "id": "agent-1", "key": "key-1"}
+
+
+def test_run_silent_gives_up_cleanly_after_retries_exhausted():
+    # A fresh-login network race (Wi-Fi not up yet) shouldn't hang or crash
+    # the silent auto-start relaunch — it should retry a few times, then
+    # just return so the process exits quietly and the next login tries
+    # again, rather than raising or looping forever.
+    calls = []
+
+    def fake_post(_url, _key, _body):
+        calls.append(1)
+        raise tp_agent.AgentRequestError("connection refused")
+
+    with (
+        patch("tp_agent._post", side_effect=fake_post),
+        patch("tp_agent.time.sleep") as mock_sleep,
+    ):
+        tp_agent.run_silent("http://x", "agent-1", "key-1")
+
+    assert len(calls) == tp_agent.REGISTER_RETRY_ATTEMPTS
+    assert mock_sleep.call_count == tp_agent.REGISTER_RETRY_ATTEMPTS - 1
+
+
+class _StopLoop(Exception):
+    pass
+
+
+def test_run_silent_persists_config_and_reregisters_autostart_on_success():
+    with (
+        patch("tp_agent._post", return_value={"status": "connected", "hostname": "h"}),
+        patch("tp_agent._ensure_local_config_persisted") as mock_persist,
+        patch("tp_agent._ensure_windows_autostart") as mock_autostart,
+        patch("tp_agent._load_state", return_value={}),
+        patch("tp_agent._collect_and_ship"),
+        patch("tp_agent.time.sleep", side_effect=_StopLoop),
+    ):
+        try:
+            tp_agent.run_silent("http://x", "agent-1", "key-1")
+        except _StopLoop:
+            pass  # escapes the heartbeat loop on purpose once we've proven we reached it
+
+    mock_persist.assert_called_once()
+    mock_autostart.assert_called_once()

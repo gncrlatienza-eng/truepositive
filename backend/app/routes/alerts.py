@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -65,6 +65,8 @@ def list_alerts(
     severity: Severity | None = None,
     rule_id: uuid.UUID | None = None,
     assignee_id: uuid.UUID | None = None,
+    log_id: int | None = None,
+    q: str | None = None,
     limit: int = 50,
     offset: int = 0,
     current_user: User = Depends(get_current_user),
@@ -77,11 +79,42 @@ def list_alerts(
         severity=severity,
         rule_id=rule_id,
         assignee_id=assignee_id,
+        log_id=log_id,
+        q=q,
         limit=limit,
         offset=offset,
     )
     return AlertListResponse(
         items=[AlertOut.model_validate(a) for a in alerts], total=total, limit=limit, offset=offset
+    )
+
+
+# Literal path, registered ahead of the typed {alert_id} lookup below — same
+# discipline as /logs/export.csv (a UUID path converter would otherwise try,
+# and fail, to parse "export.csv" as a UUID before ever reaching this route).
+@router.get("/export.csv")
+def export_alerts(
+    status: AlertStatus | None = None,
+    severity: Severity | None = None,
+    rule_id: uuid.UUID | None = None,
+    assignee_id: uuid.UUID | None = None,
+    q: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    csv_text = alert_service.export_alerts_csv(
+        db,
+        current_user.org_id,
+        status_filter=status,
+        severity=severity,
+        rule_id=rule_id,
+        assignee_id=assignee_id,
+        q=q,
+    )
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="alerts_export.csv"'},
     )
 
 

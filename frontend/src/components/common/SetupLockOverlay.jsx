@@ -7,18 +7,17 @@ import { ProgressBar } from "../charts/ProgressBar";
 // Contextual headline for whichever setup step is still outstanding — e.g.
 // a page with an agent+source but no rule yet gets a different message than
 // a page with nothing deployed at all, rather than one generic line.
+//
+// Deliberately has no "agent currently offline" entry — that case doesn't
+// use this full-block modal at all (see AgentOfflineBanner below). These
+// three are all genuine first-time-setup gaps (agent/source/rule never
+// done at all), which is the only situation where blocking the whole page
+// behind "Setup required" actually makes sense — there's truly nothing to
+// show yet.
 const PENDING_HEADLINE = {
   agent: {
     title: "No agent deployed yet",
     subtitle: "Nothing here will reflect real activity until an agent connects.",
-  },
-  // Same missing step, different situation: an org that deployed an agent
-  // before but it's currently offline (e.g. the host rebooted and the agent
-  // hasn't been started back up yet) shouldn't see "no agent deployed" —
-  // that reads as if setup was never done at all.
-  agentOffline: {
-    title: "Agent offline",
-    subtitle: "You've deployed an agent before, but none are connected right now — start it back up on its host.",
   },
   source: {
     title: "No log source configured yet",
@@ -238,6 +237,69 @@ function HeroPanel({ steps, headline, doneCount }) {
   );
 }
 
+// Shown while useSetupStatus's very first check is still in flight — before
+// this resolves, there's no way to know yet whether the page should render
+// live data or the locked panel, so blur+wait rather than either flashing
+// unblurred content for a moment or guessing. Only ever shows once, on
+// initial mount (useSetupStatus's `loading` never goes true again on later
+// polls — see its own comment), not on every 30s/focus recheck.
+function LoadingPanel() {
+  return (
+    <div
+      className="tp-chart-in"
+      style={{
+        width: "100%",
+        maxWidth: 360,
+        background: theme.color.surface,
+        border: `1px solid ${theme.color.border}`,
+        borderRadius: theme.radius.lg,
+        boxShadow: "0 20px 60px rgba(0, 0, 0, 0.5)",
+        padding: theme.space[7],
+        boxSizing: "border-box",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 11,
+          background: theme.color.accent,
+          color: "#0F1219",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          margin: "0 auto",
+          marginBottom: theme.space[4],
+          fontFamily: theme.font.mono,
+          fontSize: 26,
+          fontWeight: 700,
+          lineHeight: 1,
+        }}
+      >
+        &gt;
+      </div>
+      <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: theme.space[5] }}>
+        <span style={{ color: theme.color.text }}>True</span>
+        <span style={{ color: theme.color.accent }}>Positive</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+        <span
+          className="tp-pulse-dot"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: theme.color.accent,
+            "--tp-pulse-color": theme.color.accent,
+          }}
+        />
+        <span style={{ fontSize: 14, color: theme.color.textMuted }}>Checking agent status, please wait…</span>
+      </div>
+    </div>
+  );
+}
+
 // The lighter treatment for secondary pages (Logs/Alerts) — the full
 // checklist already lives on Overview, so this doesn't repeat it verbatim;
 // it just explains why the page is empty and points back to the one place
@@ -288,39 +350,107 @@ function CompactPanel({ headline, doneCount, totalSteps }) {
   );
 }
 
+// Not the same situation as the full-block panels above, deliberately —
+// per direct user feedback, once an org has genuinely finished setup
+// (agent deployed, source added, rule enabled — all real, at some point),
+// the agent later going offline shouldn't regress the page back to looking
+// like setup was never done. Whatever was already collected is still real
+// and worth seeing, so this is a plain top-of-page notice, not a blur+lock:
+// the page underneath stays fully visible and interactive.
+function AgentOfflineBanner() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        padding: "12px 18px",
+        margin: `${theme.space[7]}px ${theme.space[7]}px 0`,
+        background: "rgba(220, 38, 38, 0.08)",
+        border: `1px solid ${theme.color.severity.critical}`,
+        borderRadius: 8,
+        flexWrap: "wrap",
+      }}
+    >
+      <span
+        className="tp-pulse-dot"
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: theme.color.severity.critical,
+          flexShrink: 0,
+          "--tp-pulse-color": theme.color.severity.critical,
+        }}
+      />
+      <span style={{ fontSize: 14, fontWeight: 600, color: theme.color.severity.critical, whiteSpace: "nowrap" }}>
+        Agent offline
+      </span>
+      <span style={{ fontSize: 13, color: theme.color.textMuted, flex: 1, minWidth: 200 }}>
+        You&rsquo;re looking at data from its last connection — nothing new is coming in. Relaunch the agent on its host
+        to resume live collection.
+      </span>
+      <Link
+        to="/settings"
+        style={{ fontSize: 13, fontWeight: 600, color: theme.color.accent, textDecoration: "none", flexShrink: 0 }}
+      >
+        Settings →
+      </Link>
+    </div>
+  );
+}
+
 // Wraps a page's content: blurred, dimmed, and non-interactive ("locked")
 // behind a centered "Get set up" panel until an org has deployed an agent,
-// added a log source, and enabled a rule. `variant="hero"` (Overview — the
-// full checklist) or `"compact"` (Logs/Alerts — a one-line nudge back to
-// Overview, since repeating the whole checklist on every page was noisy).
+// added a log source, and enabled a rule for the *first* time. `variant="hero"`
+// (Overview — the full checklist) or `"compact"` (Logs/Alerts — a one-line
+// nudge back to Overview, since repeating the whole checklist on every page
+// was noisy). Once that first-time setup is genuinely done, an agent going
+// offline afterward no longer blocks the page at all — see
+// AgentOfflineBanner above.
 export function SetupLockOverlay({ children, variant = "hero" }) {
   const { loading, ready, steps, hasAnyAgent } = useSetupStatus();
-  const locked = !loading && !ready;
   const firstPending = steps.find((s) => !s.done);
-  const headlineKey = firstPending?.key === "agent" && hasAnyAgent ? "agentOffline" : firstPending?.key;
-  const headline = firstPending && PENDING_HEADLINE[headlineKey];
+  // The one already-completed-setup case: an agent was deployed before
+  // (hasAnyAgent) and is the only outstanding step (source/rule are still
+  // genuinely done) — that's "temporarily offline," not "never set up."
+  // Everything else missing (agent never deployed at all, or source/rule
+  // never done) is real first-time setup and still gets the full block.
+  const agentOfflineOnly = !loading && !ready && firstPending?.key === "agent" && hasAnyAgent;
+  const trulyLocked = !loading && !ready && !agentOfflineOnly;
+  // Blur+cover while still checking, or genuinely not set up yet — children
+  // stay inert (pointer-events: none) in both. Not for agentOfflineOnly:
+  // that case shows real content plus a banner, see below.
+  const covered = loading || trulyLocked;
+  const headline = firstPending && PENDING_HEADLINE[firstPending.key];
   const doneCount = steps.filter((s) => s.done).length;
 
   return (
     <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {agentOfflineOnly && <AgentOfflineBanner />}
       <div
         style={{
           flex: 1,
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
-          filter: locked ? "blur(6px)" : "none",
-          opacity: locked ? 0.5 : 1,
-          pointerEvents: locked ? "none" : "auto",
-          userSelect: locked ? "none" : "auto",
+          filter: covered ? "blur(6px)" : "none",
+          opacity: covered ? 0.5 : 1,
+          pointerEvents: covered ? "none" : "auto",
+          userSelect: covered ? "none" : "auto",
           transition: "filter 200ms ease-out, opacity 200ms ease-out",
         }}
-        aria-hidden={locked ? true : undefined}
+        aria-hidden={covered ? true : undefined}
       >
-        {children}
+        {/* `children` can be a plain node (Logs/Alerts — nothing there needs
+            to know about agentOfflineOnly) or a render function receiving
+            { agentOfflineOnly }, for pages that want to visually de-emphasize
+            their own "live" elements (Overview's KPIs/charts) without a
+            second, duplicate useSetupStatus() poll to get that flag. */}
+        {typeof children === "function" ? children({ agentOfflineOnly }) : children}
       </div>
 
-      {locked && (
+      {covered && (
         <div
           style={{
             position: "absolute",
@@ -333,7 +463,9 @@ export function SetupLockOverlay({ children, variant = "hero" }) {
             background: "rgba(15, 18, 25, 0.5)",
           }}
         >
-          {variant === "compact" ? (
+          {loading ? (
+            <LoadingPanel />
+          ) : variant === "compact" ? (
             <CompactPanel headline={headline} doneCount={doneCount} totalSteps={steps.length} />
           ) : (
             <HeroPanel steps={steps} headline={headline} doneCount={doneCount} />

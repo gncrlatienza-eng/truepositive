@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react";
 import { theme } from "../../styles/theme";
 import { Badge, SeverityBadge } from "../common/Badge";
 import { Button } from "../common/Button";
 import Modal from "../common/Modal";
+import { EventGuide } from "../common/EventGuide";
+import { getLog } from "../../api/logs";
 import { formatTimestamp } from "../../utils/format";
 import { useAuth } from "../../context/AuthContext";
 
@@ -29,8 +32,23 @@ function Field({ label, children }) {
   );
 }
 
-export default function AlertDetailModal({ open, onClose, alert, ruleName, onUpdate }) {
+export default function AlertDetailModal({ open, onClose, alert, ruleName, eventType, onUpdate }) {
   const { user } = useAuth();
+  const [sourceLog, setSourceLog] = useState(null);
+
+  // Traceability: the alert already carries the id of the log that
+  // triggered it (Alert.log_id, set at ingestion time) — fetch it fresh
+  // per-alert rather than trusting a prop the caller might not have, since
+  // AlertsPage only ever has the alert list's own fields, not the log.
+  useEffect(() => {
+    setSourceLog(null);
+    if (open && alert?.log_id) {
+      getLog(alert.log_id)
+        .then(setSourceLog)
+        .catch(() => {});
+    }
+  }, [open, alert?.log_id]);
+
   if (!alert) return null;
 
   const isMine = alert.assignee_id === user?.id;
@@ -70,6 +88,28 @@ export default function AlertDetailModal({ open, onClose, alert, ruleName, onUpd
           </div>
         </Field>
       )}
+
+      {sourceLog && (
+        <Field label="Source log">
+          <div
+            style={{
+              marginTop: 6,
+              padding: theme.space[3],
+              background: theme.color.background,
+              border: `1px solid ${theme.color.border}`,
+              borderRadius: theme.radius.sm,
+              fontSize: 13,
+            }}
+          >
+            <div style={{ color: theme.color.textMuted, marginBottom: 4 }}>
+              {formatTimestamp(sourceLog.timestamp)} · {sourceLog.event_type}
+            </div>
+            <div style={{ fontFamily: theme.font.mono, whiteSpace: "pre-wrap" }}>{sourceLog.message}</div>
+          </div>
+        </Field>
+      )}
+
+      <EventGuide eventType={eventType} />
 
       <div style={{ display: "flex", gap: theme.space[3], marginTop: theme.space[6], flexWrap: "wrap" }}>
         {nextStatus && <Button onClick={() => onUpdate({ status: nextStatus })}>{NEXT_LABEL[alert.status]}</Button>}

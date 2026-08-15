@@ -15,6 +15,7 @@ from app.models.log import Log
 from app.models.log_source import LogSource
 from app.schemas.alert_rules import AlertRuleConditions
 from app.schemas.logs import LogIngestRequest, LogIngestResponse, SortOrder
+from app.utils.csv import csv_safe
 
 MAX_LIMIT = 200
 DEFAULT_LIMIT = 50
@@ -145,20 +146,6 @@ def get_log(db: Session, org_id: uuid.UUID, log_id: int) -> Log:
     return log
 
 
-# Spreadsheet apps treat a cell starting with any of these as a formula on
-# open — a log message/event_type is attacker-influenceable content (that's
-# the point of a monitoring tool), so exporting it verbatim lets a crafted
-# log line execute a formula (data exfiltration via HYPERLINK/WEBSERVICE, or
-# worse on older Excel/DDE) the moment an analyst opens the CSV.
-_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
-
-
-def _csv_safe(value: str) -> str:
-    if value and value[0] in _CSV_FORMULA_TRIGGERS:
-        return "'" + value
-    return value
-
-
 def export_logs_csv(
     db: Session,
     org_id: uuid.UUID,
@@ -184,10 +171,10 @@ def export_logs_csv(
                 log.id,
                 log.timestamp.isoformat(),
                 log.severity.value,
-                _csv_safe(log.event_type),
+                csv_safe(log.event_type),
                 log.source_id,
                 log.agent_id,
-                _csv_safe(log.message),
+                csv_safe(log.message),
             ]
         )
     return buffer.getvalue()

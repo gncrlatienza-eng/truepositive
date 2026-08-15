@@ -61,6 +61,11 @@ HEARTBEAT_INTERVAL_SECONDS = 30
 CONFIG_FILENAME = "agent_config.json"
 STATE_FILENAME = "agent_state.json"
 COLLECT_BATCH_LIMIT = 200
+# See run_silent — a few short retries so a fresh-boot network race doesn't
+# permanently fail the one registration attempt a silent login-time launch
+# gets.
+REGISTER_RETRY_ATTEMPTS = 3
+REGISTER_RETRY_DELAY_SECONDS = 10
 # Must match the backend's routes/agents.py — the dashboard's one-click
 # download appends this marker + a JSON config directly onto a copy of this
 # program's own compiled .exe, so double-clicking it needs nothing else next
@@ -461,10 +466,17 @@ def _ensure_windows_autostart(log_fn=print) -> None:
     except ImportError:
         return
     try:
+        # --silent so the login-time relaunch runs headless (see run_silent)
+        # instead of popping the GUI window/taskbar entry on every login —
+        # a manual double-click from the Start Menu shortcut (no --silent)
+        # still shows the normal window. Re-set on every successful
+        # connection (not just once), so an agent that registered this key
+        # before --silent existed self-heals to the silent command the next
+        # time it connects, with no separate migration needed.
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE
         ) as key:
-            winreg.SetValueEx(key, "TruePositiveAgent", 0, winreg.REG_SZ, f'"{sys.executable}"')
+            winreg.SetValueEx(key, "TruePositiveAgent", 0, winreg.REG_SZ, f'"{sys.executable}" --silent')
         log_fn("Registered to auto-start at Windows login.")
     except OSError as exc:
         log_fn(f"Could not register auto-start (non-fatal): {exc}")
@@ -639,6 +651,45 @@ def run_gui(base: str, agent_id: str, agent_key: str) -> None:
     sys.exit(0)
 
 
+# Used for the Registry Run key's login-time relaunch (see
+# _ensure_windows_autostart) — no Tkinter at all, not even withdrawn, so
+# there's never a window or taskbar entry to begin with. Deliberately
+# mirrors run_gui's worker() loop resilience (log a failed heartbeat and
+# keep going) rather than run_cli's — run_cli exits the whole process on
+# the first AgentRequestError, which is fine for an interactive terminal
+# session but would silently kill an unattended background agent over one
+# transient network blip.
+def run_silent(base: str, agent_id: str, agent_key: str) -> None:
+    hostname = socket.gethostname()
+
+    # A fresh boot/login can win the race against the network actually
+    # being up yet — retry the initial registration a few times before
+    # giving up, rather than failing permanently until the next login just
+    # because Wi-Fi wasn't ready in the first second or two.
+    agent = None
+    for attempt in range(REGISTER_RETRY_ATTEMPTS):
+        try:
+            agent = _post(f"{base}/agents/{agent_id}/register", agent_key, {"hostname": hostname})
+            break
+        except AgentRequestError:
+            if attempt < REGISTER_RETRY_ATTEMPTS - 1:
+                time.sleep(REGISTER_RETRY_DELAY_SECONDS)
+    if agent is None:
+        return  # nothing more to do this run — the next login tries again
+
+    _ensure_local_config_persisted(base, agent_id, agent_key)
+    _ensure_windows_autostart(log_fn=lambda _msg: None)
+
+    state = _load_state()
+    while True:
+        time.sleep(HEARTBEAT_INTERVAL_SECONDS)
+        try:
+            _post(f"{base}/agents/{agent_id}/heartbeat", agent_key, {})
+        except AgentRequestError:
+            pass  # transient — the next cycle retries, same as run_gui's worker()
+        _collect_and_ship(base, agent_id, agent_key, state, log_fn=lambda _msg: None)
+
+
 def _validate_connect_fields(url: str, agent_id: str, agent_key: str) -> dict | None:
     url = url.strip().rstrip("/")
     agent_id = agent_id.strip()
@@ -704,6 +755,11 @@ def main() -> None:
     parser.add_argument("--url", default=None, help="Backend base URL, e.g. http://localhost:8000")
     parser.add_argument("--id", dest="agent_id", default=None, help="Agent ID shown during enrollment")
     parser.add_argument("--key", dest="agent_key", default=None, help="One-time enrollment key shown during enrollment")
+    parser.add_argument(
+        "--silent",
+        action="store_true",
+        help="No window/taskbar entry — used by the Windows auto-start Registry key, not meant for manual use",
+    )
     args = parser.parse_args()
 
     cli_fields = (args.url, args.agent_id, args.agent_key)
@@ -711,20 +767,39 @@ def main() -> None:
         parser.error("--url, --id, and --key must all be provided together")
 
     if all(cli_fields):
-        run_cli(args.url.rstrip("/"), args.agent_id, args.agent_key)
+        if args.silent:
+            run_silent(args.url.rstrip("/"), args.agent_id, args.agent_key)
+        else:
+            run_cli(args.url.rstrip("/"), args.agent_id, args.agent_key)
         return
 
     if not _acquire_single_instance_lock():
-        _show_already_running_message()
+        # Silent launches shouldn't ever pop this dialog — if a silent
+        # instance is already running, a second silent launch (e.g. two
+        # logins in a row without a reboot) should just quietly step aside,
+        # not put a message box on screen that was explicitly asked not to
+        # show one.
+        if not args.silent:
+            _show_already_running_message()
         sys.exit(0)
 
     config = _load_config()
     if config is None:
+        if args.silent:
+            # Silent mode only makes sense once a prior run already
+            # persisted a config — that's exactly the state the Registry Run
+            # key relaunch expects. Nothing to connect with and explicitly
+            # asked not to show the connect form, so exit quietly rather
+            # than popping a GUI anyway.
+            sys.exit(0)
         config = _show_connect_form()
         if config is None:
             sys.exit(0)
 
-    run_gui(config["url"].rstrip("/"), config["id"], config["key"])
+    if args.silent:
+        run_silent(config["url"].rstrip("/"), config["id"], config["key"])
+    else:
+        run_gui(config["url"].rstrip("/"), config["id"], config["key"])
 
 
 if __name__ == "__main__":

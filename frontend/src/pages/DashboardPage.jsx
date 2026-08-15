@@ -29,10 +29,21 @@ const KPI_PANEL_TYPES = {
   risk: "risk",
 };
 
-// The agent ships logs every 30s (see agent/tp_agent.py) — polling the
-// summary on the same cadence means "watch logs flow in" is actually true
-// on this page instead of requiring a manual reload.
-const REFRESH_INTERVAL_MS = 30_000;
+// Per explicit user request: fast enough that the charts visibly redraw
+// instead of only ever changing on a page reload. Worth knowing what this
+// actually buys, honestly: the agent itself only ships a new batch every
+// 30s (agent/tp_agent.py's own heartbeat/collection cadence), so genuinely
+// new data still only ever lands roughly every 30s regardless of how often
+// this polls — polling faster than that shortens the *worst-case delay*
+// before a new batch shows up (up to ~2s instead of up to ~30s), it doesn't
+// manufacture motion between real batches. The real cost is real: this
+// endpoint runs ~15 separate GROUP BY/COUNT queries per call (see
+// dashboard_service.get_dashboard_summary), so this is 15x the query
+// volume of the previous 30s interval, per open Overview tab. Fine at this
+// project's current scale; worth revisiting (e.g. a cheaper summary
+// endpoint, or server-push instead of polling) if concurrent open
+// dashboards ever becomes large.
+const REFRESH_INTERVAL_MS = 2_000;
 
 export default function DashboardPage() {
   const [timeWindow, setTimeWindow] = useState("24h");
@@ -88,115 +99,139 @@ export default function DashboardPage() {
 
   return (
     <SetupLockOverlay>
-      <div style={{ animation: "tp-fade 200ms ease-out", flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              gap: "12px 24px",
-              padding: "28px 28px 20px",
-              borderBottom: `1px solid ${theme.color.border}`,
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: theme.color.textMuted,
-                  letterSpacing: "0.07em",
-                  textTransform: "uppercase",
-                  marginBottom: 9,
-                }}
-              >
-                Overview
-              </div>
-              <h1 style={{ fontSize: 34, letterSpacing: "-0.025em" }}>Detection posture</h1>
-            </div>
+      {({ agentOfflineOnly }) => (
+        <div
+          style={{ animation: "tp-fade 200ms ease-out", flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}
+        >
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div
               style={{
                 display: "flex",
-                border: `1px solid ${theme.color.border}`,
-                borderRadius: 999,
-                overflow: "hidden",
+                flexWrap: "wrap",
+                justifyContent: "space-between",
+                alignItems: "flex-end",
+                gap: "12px 24px",
+                padding: "28px 28px 20px",
+                borderBottom: `1px solid ${theme.color.border}`,
               }}
             >
-              {WINDOWS.map((w) => (
-                <span
-                  key={w.key}
-                  onClick={() => setTimeWindow(w.key)}
-                  role="button"
-                  tabIndex={0}
+              <div style={{ minWidth: 0 }}>
+                <div
                   style={{
                     fontSize: 14,
                     fontWeight: 600,
-                    padding: "7px 14px",
-                    cursor: "pointer",
-                    background: timeWindow === w.key ? theme.color.surface : "transparent",
-                    color: timeWindow === w.key ? theme.color.accent : theme.color.textMuted,
-                    borderRight: `1px solid ${theme.color.border}`,
+                    color: theme.color.textMuted,
+                    letterSpacing: "0.07em",
+                    textTransform: "uppercase",
+                    marginBottom: 9,
                   }}
                 >
-                  {w.label}
-                </span>
-              ))}
+                  Overview
+                </div>
+                <h1 style={{ fontSize: 34, letterSpacing: "-0.025em" }}>Detection posture</h1>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  border: `1px solid ${theme.color.border}`,
+                  borderRadius: 999,
+                  overflow: "hidden",
+                }}
+              >
+                {WINDOWS.map((w) => (
+                  <span
+                    key={w.key}
+                    onClick={() => setTimeWindow(w.key)}
+                    role="button"
+                    tabIndex={0}
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      padding: "7px 14px",
+                      cursor: "pointer",
+                      background: timeWindow === w.key ? theme.color.surface : "transparent",
+                      color: timeWindow === w.key ? theme.color.accent : theme.color.textMuted,
+                      borderRight: `1px solid ${theme.color.border}`,
+                    }}
+                  >
+                    {w.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: "20px 28px 24px",
+                flex: 1,
+                minHeight: 0,
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                boxSizing: "border-box",
+              }}
+            >
+              <StatusBanner banner={summary.banner} onOpenAgents={() => setOpenPanel({ type: "agents" })} />
+
+              <CriticalActionStrip
+                criticalCount={Number(summary.kpis.find((k) => k.key === "critical")?.value || 0)}
+                onOpen={() => setOpenPanel({ type: "critical" })}
+              />
+
+              {/* Agent-offline dims just the "live" elements — the KPI
+                  numbers/sparklines and the trend chart — since those imply
+                  real-time freshness that isn't true right now. Everything
+                  else below (severity/rule breakdowns, the alert queue, top
+                  sources) is a breakdown of records that are just as real
+                  whether or not the agent is currently connected, so those
+                  stay fully sharp. Still fully interactive either way —
+                  drilling into a KPI shows real historical data for that
+                  window regardless of current connection status. */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 16,
+                  opacity: agentOfflineOnly ? 0.55 : 1,
+                  filter: agentOfflineOnly ? "grayscale(65%)" : "none",
+                  transition: "opacity 200ms ease-out, filter 200ms ease-out",
+                }}
+              >
+                <KpiRow
+                  kpis={summary.kpis.filter((k) => k.key !== "ingestion")}
+                  onSelect={(key) => setOpenPanel({ type: KPI_PANEL_TYPES[key] || key })}
+                />
+
+                <EventsOverTimeCard
+                  bars={summary.kpis.find((k) => k.key === "events")?.sparkline || []}
+                  ingest={summary.ingest}
+                  window={timeWindow}
+                  onOpen={() => setOpenPanel({ type: "events" })}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <SeverityBreakdownCard
+                  bars={summary.severity_breakdown}
+                  onSelect={(severity) => setOpenPanel({ type: "severity", key: severity })}
+                />
+                <TopAlertTypesCard
+                  rows={summary.top_alert_types}
+                  onSelect={(ruleId) => ruleId && setOpenPanel({ type: "rule", key: ruleId })}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(430px, 1fr))", gap: 16 }}>
+                <AlertQueueCard items={summary.alert_queue} />
+                <TopSourcesCard rows={summary.top_sources} />
+              </div>
             </div>
           </div>
 
-          <div
-            style={{
-              padding: "20px 28px 24px",
-              flex: 1,
-              minHeight: 0,
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: 16,
-              boxSizing: "border-box",
-            }}
-          >
-            <StatusBanner banner={summary.banner} onOpenAgents={() => setOpenPanel({ type: "agents" })} />
-
-            <CriticalActionStrip
-              criticalCount={Number(summary.kpis.find((k) => k.key === "critical")?.value || 0)}
-              onOpen={() => setOpenPanel({ type: "critical" })}
-            />
-
-            <KpiRow
-              kpis={summary.kpis.filter((k) => k.key !== "ingestion")}
-              onSelect={(key) => setOpenPanel({ type: KPI_PANEL_TYPES[key] || key })}
-            />
-
-            <EventsOverTimeCard
-              bars={summary.kpis.find((k) => k.key === "events")?.sparkline || []}
-              ingest={summary.ingest}
-              window={timeWindow}
-              onOpen={() => setOpenPanel({ type: "events" })}
-            />
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <SeverityBreakdownCard
-                bars={summary.severity_breakdown}
-                onSelect={(severity) => setOpenPanel({ type: "severity", key: severity })}
-              />
-              <TopAlertTypesCard
-                rows={summary.top_alert_types}
-                onSelect={(ruleId) => ruleId && setOpenPanel({ type: "rule", key: ruleId })}
-              />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(430px, 1fr))", gap: 16 }}>
-              <AlertQueueCard items={summary.alert_queue} />
-              <TopSourcesCard rows={summary.top_sources} />
-            </div>
-          </div>
+          <MetricPanel panel={openPanel} timeWindow={timeWindow} onClose={() => setOpenPanel(null)} />
         </div>
-
-        <MetricPanel panel={openPanel} timeWindow={timeWindow} onClose={() => setOpenPanel(null)} />
-      </div>
+      )}
     </SetupLockOverlay>
   );
 }

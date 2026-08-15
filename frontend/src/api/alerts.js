@@ -12,6 +12,21 @@ export function updateAlert(alertId, payload) {
   return api.patch(`/alerts/${alertId}`, payload).then((r) => r.data);
 }
 
+// Auth is a bearer header, not a cookie, so a plain <a href> can't carry it
+// — fetch as a blob and trigger the download client-side, same pattern as
+// api/logs.js's exportLogsCsv.
+export async function exportAlertsCsv(params = {}) {
+  const response = await api.get("/alerts/export.csv", { params, responseType: "blob" });
+  const blobUrl = window.URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = "alerts_export.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(blobUrl);
+}
+
 export function listRules(params = {}) {
   return api.get("/alerts/rules", { params }).then((r) => r.data);
 }
