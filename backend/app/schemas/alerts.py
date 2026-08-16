@@ -13,6 +13,7 @@ class AlertOut(BaseModel):
     id: uuid.UUID
     rule_id: uuid.UUID | None
     log_id: int | None
+    incident_id: uuid.UUID | None
     severity: Severity
     status: AlertStatus
     assignee_id: uuid.UUID | None

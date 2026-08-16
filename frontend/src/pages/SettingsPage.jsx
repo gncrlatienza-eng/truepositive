@@ -4,12 +4,14 @@ import { theme } from "../styles/theme";
 import SourcesTab from "../components/settings/SourcesTab";
 import WhitelistTab from "../components/settings/WhitelistTab";
 import RulesTab from "../components/settings/RulesTab";
+import AutomationTab from "../components/settings/AutomationTab";
 
-const TAB_IDS = ["sources", "rules", "whitelist"];
+const TAB_IDS = ["sources", "rules", "whitelist", "automation"];
 const TABS = [
   { id: "sources", label: "Data sources" },
   { id: "rules", label: "Rules" },
   { id: "whitelist", label: "Whitelisting" },
+  { id: "automation", label: "Automation" },
 ];
 
 // Rendered inside AppShell (sidebar/topbar) as of Sprint 4 — no longer builds
@@ -20,9 +22,7 @@ export default function SettingsPage() {
   const initialTab = TAB_IDS.includes(searchParams.get("tab")) ? searchParams.get("tab") : "sources";
   const [tab, setTab] = useState(initialTab);
 
-  // Only Sources needs the wider frame (it's two columns now) — Rules and
-  // Whitelisting are plain single-column lists that were designed for the
-  // narrower 900px width and stretch into ugly, gappy rows at 1100px.
+  // Sources needs the wider frame (two columns); others are narrower single-column lists.
   const maxWidth = tab === "sources" ? 1100 : 900;
 
   return (
@@ -52,13 +52,15 @@ export default function SettingsPage() {
           ))}
         </div>
         <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[5] }}>
-          Automation and Audit tabs arrive in later sprints.
+          Audit log tab arrives in a later sprint.
         </div>
 
         {tab === "sources" && <SourcesTab />}
         {tab === "rules" && <RulesTab />}
         {tab === "whitelist" && <WhitelistTab />}
+        {tab === "automation" && <AutomationTab />}
       </div>
     </div>
   );
 }
+

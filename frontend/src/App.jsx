@@ -10,6 +10,7 @@ import SettingsPage from "./pages/SettingsPage";
 import DashboardPage from "./pages/DashboardPage";
 import LogsPage from "./pages/LogsPage";
 import AlertsPage from "./pages/AlertsPage";
+import IncidentsPage from "./pages/IncidentsPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import AppShell from "./components/layout/AppShell";
 
@@ -45,7 +46,7 @@ export default function App() {
               <Route path="/app" element={<DashboardPage />} />
               <Route path="/app/logs" element={<LogsPage />} />
               <Route path="/app/alerts" element={<AlertsPage />} />
-              <Route path="/app/incidents" element={<ComingSoonPage title="Incidents" sprint={6} />} />
+              <Route path="/app/incidents" element={<IncidentsPage />} />
               <Route path="/app/reports" element={<ComingSoonPage title="Reports" sprint={8} />} />
               <Route path="/app/intel" element={<ComingSoonPage title="Threat intel" sprint={8} />} />
               <Route path="/settings" element={<SettingsPage />} />
