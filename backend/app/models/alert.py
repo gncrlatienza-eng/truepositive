@@ -26,6 +26,13 @@ class Alert(Base):
     severity: Mapped[Severity] = mapped_column(pg_enum(Severity, "severity"))
     status: Mapped[AlertStatus] = mapped_column(pg_enum(AlertStatus, "alert_status"), default=AlertStatus.OPEN)
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Nullable FK to incidents: set when an alert is linked to an incident.
+    # ON DELETE SET NULL: deleting the incident detaches alerts rather than
+    # cascade-deleting them — the same "detach don't destroy" principle that
+    # AlertRule deletion uses for its already-created alerts (Sprint 5).
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("incidents.id", ondelete="SET NULL"), nullable=True
+    )
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

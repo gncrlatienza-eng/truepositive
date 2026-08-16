@@ -84,6 +84,19 @@ def ingest_logs(db: Session, agent: Agent, payload: LogIngestRequest) -> LogInge
                 )
                 alerts_created += 1
 
+    # Flush alerts before playbook evaluation so alert.id is set and playbooks
+    # can link the newly-created alert to any auto-created incident.
+    db.flush()
+
+    # Evaluate playbooks synchronously, matching the "no scheduler, inline"
+    # philosophy established by alert-rule evaluation above (Sprint 5).
+    # Imported here to avoid the circular dependency: playbook_service imports
+    # _SEVERITY_RANK from this module.
+    from app.services.playbook_service import evaluate_playbooks_for_log
+
+    for log in logs:
+        evaluate_playbooks_for_log(db, agent.org_id, log)
+
     db.commit()
     return LogIngestResponse(ingested=len(logs), alerts_created=alerts_created)
 

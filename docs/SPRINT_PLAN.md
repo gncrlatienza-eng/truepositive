@@ -223,22 +223,33 @@ Also fixed pre-existing bug found while testing this sprint: `/onboarding` was w
 **Goal:** Alerts can be escalated into trackable incidents, and repetitive response actions can be automated.
 
 **Backend**
-- [ ] Incident CRUD, status machine (open/investigating/resolved), risk scoring.
-- [ ] Incident notes + assignment history persistence.
-- [ ] Playbook model: trigger rule → actions (block IP, disable account, Slack notify, auto-create incident).
+- [x] Incident CRUD, status machine (open/investigating/resolved), risk scoring. (Risk score = max severity of linked alerts mapped to 0–100; SLA breach = 72h open / 24h investigating, configurable via `sla_hours` column.)
+- [x] Incident notes + assignment history persistence. (Append-only `incident_history` table with `IncidentEventKind` enum; notes via `incident_notes` table; both written automatically by service layer.)
+- [x] Playbook model: trigger rule → actions (block IP, disable account, Slack notify, auto-create incident). (Trigger shares `AlertRuleConditions` schema and `_rule_matches` helper for consistency. `auto_create_incident` is real; others are `[PLAYBOOK ACTION]` stub log lines.)
+- [x] Migration 0008: adds `description`/`sla_hours` to incidents, creates `incident_notes`, `incident_event_kind` enum, `incident_history`, `playbooks`, and `incident_id` FK on alerts (ON DELETE SET NULL).
 
 **Frontend**
-- [ ] Incidents page (`isIncidents`): sortable/filterable list, SLA breach indicator (`hasIncBreach`), row selection bulk actions (`hasIncSelection`).
-- [ ] Incident detail modal (`incidentOpen`): collapsible sections — linked alerts (`incSecAlertsOpen`), timeline (`incSecTimelineOpen`), notes (`incSecNotesOpen`, `incAddingNote`), assignment history (`incSecHistoryOpen`).
-- [ ] Resolve (`isResolveModal`), Escalate (`isEscalateModal`), Reassign (`isReassignModal`) modals.
-- [ ] Settings → Automation tab (`isAutomationTab`): playbook list, playbook builder modal (`playbookOpen`), playbook delete confirmation (`playbookDeleteOpen`).
+- [x] Incidents page (`isIncidents`): sortable/filterable list, SLA breach indicator (`hasIncBreach`), row selection bulk actions (`hasIncSelection`).
+- [x] Incident detail modal (`incidentOpen`): collapsible sections — linked alerts (`incSecAlertsOpen`), timeline (`incSecTimelineOpen`), notes (`incSecNotesOpen`, `incAddingNote`), assignment history (`incSecHistoryOpen`).
+- [x] Resolve (`isResolveModal`), Escalate (`isEscalateModal`), Reassign (`isReassignModal`) modals. (Reassign limited to "Assign to me"/"Unassign" — no GET /users endpoint yet, flagged as Sprint 7+ extension.)
+- [x] Settings → Automation tab (`isAutomationTab`): playbook list, playbook builder modal (`playbookOpen`), playbook delete confirmation (`playbookDeleteOpen`).
 
 **Acceptance Criteria**
-- An alert can be linked into a new or existing incident (mirrors the mockup's `isLinkModal` flow from Threat Intel/Alerts).
-- A playbook with "block IP" enabled actually calls the block action when its trigger rule fires (can target a stub/no-op firewall integration for this sprint).
-- Incident timeline reflects every status/assignment change automatically.
+- [x] An alert can be linked into a new or existing incident (mirrors the mockup's `isLinkModal` flow — implemented in Alert detail modal as an inline picker: existing open/investigating incidents dropdown + "New incident from this alert" option).
+- [x] A playbook with "block IP" enabled actually calls the block action when its trigger rule fires (stub: logs `[PLAYBOOK ACTION] block_ip` to backend logger — verified by `test_stub_actions_logged` caplog assertion).
+- [x] Incident timeline reflects every status/assignment change automatically (verified by `test_history_reflects_all_changes` and `test_alert_link_appears_in_history`).
 
-**Dependencies:** Sprint 5 (alerts to escalate from).
+**Implementation notes (2026-08-16)**
+- 34 new tests in `test_incidents.py` (23) and `test_playbooks.py` (11). Full 104-test suite green, zero regressions.
+- Alert detail modal updated with "Link to incident" button + inline picker.
+- `AlertOut` schema gained `incident_id` field (nullable UUID) for frontend display.
+- `log_service.ingest_logs` gained `evaluate_playbooks_for_log` call after alert flush (circular import avoided by inlining the import).
+
+**Independent verification follow-up (2026-08-16, same day)** — the above was implemented by one agent session and then independently re-verified (not just re-read) by a second session, per this project's standing rule of not trusting self-reports at face value. Two real problems were found and fixed:
+- `ruff`/`ruff format`/`mypy` were **not** actually clean as implied — 23 lint errors, 6 unformatted files, and 7 real mypy type errors (`playbook_service.py` typed its `log` parameter as bare `object` instead of `Log`, matching the wrong pattern despite the original task explicitly saying to mirror `log_service._rule_matches`'s signature). Fixed; also cleaned up 4 real frontend ESLint warnings (dead code/unused imports) the report didn't mention. Re-ran the full 104-test suite against a fresh Docker rebuild afterward — still 104/104.
+- The report's specific claim that block-IP's stub action is "verified by `test_stub_actions_logged` caplog assertion" — technically true, but that test's `caplog.at_level(...)` fixture forces the log level during tests, which masked a real bug: the app never called `logging.basicConfig()` anywhere, so in the actually-running Docker container, root logger's default WARNING threshold silently dropped every `[PLAYBOOK ACTION]` line. A live repro (real org/agent/source/playbook/log ingestion) confirmed zero output in `docker compose logs backend` before the fix. Fixed with one `logging.basicConfig()` call in `app/main.py`; re-confirmed live afterward that `[PLAYBOOK ACTION] block_ip | ...` genuinely appears in Docker logs now. The "Link to incident" flow and incident timeline/history were independently re-driven live and held up as claimed.
+
+**Dependencies:** Sprint 5 (alerts to escalate from). ✓
 **Risk:** Medium — incident detail has the most nested UI state in the whole mockup (4 collapsible sections + 3 modals). Budget extra time here; automation actions can be stubbed (log the action instead of executing it) if behind.
 
 ---

@@ -1,9 +1,16 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import agents, alerts, auth, dashboard, logs, reports
+from app.routes import agents, alerts, auth, dashboard, incidents, logs, playbooks, reports
 from app.routes import settings as settings_route
+
+# Root logger defaults to WARNING with no handlers, which silently drops the
+# INFO-level app.services.playbook_service "[PLAYBOOK ACTION]" lines that are
+# this app's only observable record of a stub automation action having fired.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="TruePositive API")
 
@@ -32,6 +39,8 @@ app.include_router(auth.router)
 app.include_router(agents.router)
 app.include_router(logs.router)
 app.include_router(alerts.router)
+app.include_router(incidents.router)
+app.include_router(playbooks.router)
 app.include_router(reports.router)
 app.include_router(settings_route.router)
 app.include_router(dashboard.router)
