@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { BookOpen } from "lucide-react";
 import { theme } from "../styles/theme";
 import { exportLogsCsv, listLogs } from "../api/logs";
@@ -35,7 +36,11 @@ export default function LogsPage() {
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+  const [searchParams] = useSearchParams();
+  // Deep-linked from the topbar's global search (?q=...) — read once on
+  // mount as the initial value, not synced continuously, so typing in this
+  // page's own search box afterward doesn't fight the URL.
+  const [q, setQ] = useState(() => searchParams.get("q") || "");
   const [severity, setSeverity] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [hourFilter, setHourFilter] = useState("all");
@@ -220,6 +225,7 @@ export default function LogsPage() {
                 the agent is offline so it doesn't look like a genuinely
                 current feed when nothing new can be arriving. */}
             <Card
+              className={agentOfflineOnly ? "tp-agent-offline" : ""}
               style={{
                 flex: 1,
                 minHeight: 0,

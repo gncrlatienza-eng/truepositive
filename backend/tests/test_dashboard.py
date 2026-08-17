@@ -94,6 +94,73 @@ def test_summary_reflects_seeded_data(client, auth_headers, db_session):
     assert data["top_alert_types"][0]["count"] == 2
 
 
+def test_agents_panel_shows_distinct_per_agent_counts(client, auth_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    agent_a = Agent(org_id=org_id, name="a", platform="linux", agent_key_hash="x", status="connected")
+    agent_b = Agent(org_id=org_id, name="b", platform="linux", agent_key_hash="x", status="connected")
+    db_session.add_all([agent_a, agent_b])
+    db_session.flush()
+
+    now = datetime.now(UTC)
+    # agent_a: 2 logs, 1 alert. agent_b: 1 log, 0 alerts.
+    log_a1 = Log(
+        org_id=org_id, agent_id=agent_a.id, timestamp=now, severity=Severity.HIGH, event_type="e", message="m", raw={}
+    )
+    log_a2 = Log(
+        org_id=org_id, agent_id=agent_a.id, timestamp=now, severity=Severity.OK, event_type="e", message="m", raw={}
+    )
+    log_b1 = Log(
+        org_id=org_id, agent_id=agent_b.id, timestamp=now, severity=Severity.OK, event_type="e", message="m", raw={}
+    )
+    db_session.add_all([log_a1, log_a2, log_b1])
+    db_session.flush()
+    db_session.add(Alert(org_id=org_id, log_id=log_a1.id, severity=Severity.HIGH, status=AlertStatus.OPEN, title="t"))
+    db_session.flush()
+
+    response = client.get("/dashboard/panels/agents", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    rows = {row["id"]: row for row in response.json()["agents"]}
+    assert rows[str(agent_a.id)]["event_count"] == 2
+    assert rows[str(agent_a.id)]["alert_count"] == 1
+    assert rows[str(agent_b.id)]["event_count"] == 1
+    assert rows[str(agent_b.id)]["alert_count"] == 0
+
+
+def test_agents_panel_respects_window(client, auth_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    agent = Agent(org_id=org_id, name="a", platform="linux", agent_key_hash="x", status="connected")
+    db_session.add(agent)
+    db_session.flush()
+
+    old_log = Log(
+        org_id=org_id,
+        agent_id=agent.id,
+        timestamp=datetime.now(UTC) - timedelta(days=10),
+        severity=Severity.OK,
+        event_type="e",
+        message="m",
+        raw={},
+    )
+    db_session.add(old_log)
+    db_session.flush()
+
+    response = client.get("/dashboard/panels/agents?window=24h", headers=auth_headers)
+    rows = {row["id"]: row for row in response.json()["agents"]}
+    assert rows[str(agent.id)]["event_count"] == 0  # outside the 24h window
+
+
+def test_agents_panel_cross_org_isolation(client, auth_headers, second_org_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    other_org_id = _org_id(client, second_org_headers)
+    db_session.add(Agent(org_id=org_id, name="mine", platform="linux", agent_key_hash="x", status="connected"))
+    db_session.add(Agent(org_id=other_org_id, name="theirs", platform="linux", agent_key_hash="x", status="connected"))
+    db_session.flush()
+
+    response = client.get("/dashboard/panels/agents", headers=auth_headers)
+    names = [row["name"] for row in response.json()["agents"]]
+    assert names == ["mine"]
+
+
 def test_cross_org_isolation(client, auth_headers, second_org_headers, db_session):
     org_id = _org_id(client, auth_headers)
     _agent, source = _seed_source_and_agent(db_session, org_id)

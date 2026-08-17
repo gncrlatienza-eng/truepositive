@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { BookOpen } from "lucide-react";
 import { theme } from "../styles/theme";
 import { exportAlertsCsv, listAlerts, listRules, updateAlert } from "../api/alerts";
@@ -32,7 +33,10 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
+  const [searchParams] = useSearchParams();
+  // Deep-linked from the topbar's global search (?q=...) — see LogsPage.jsx's
+  // identical comment for why this is read once, not kept in sync.
+  const [q, setQ] = useState(() => searchParams.get("q") || "");
   const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
   const [ruleId, setRuleId] = useState("");
@@ -262,6 +266,7 @@ export default function AlertsPage() {
             {/* Same reasoning as LogsPage: the filter bar + table is the
                 "live" surface, dimmed while the agent is offline. */}
             <Card
+              className={agentOfflineOnly ? "tp-agent-offline" : ""}
               style={{
                 flex: 1,
                 minHeight: 0,

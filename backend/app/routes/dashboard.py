@@ -7,6 +7,7 @@ from app.database.session import get_db
 from app.models.common import Severity
 from app.models.user import User
 from app.schemas.dashboard import (
+    AgentsPanel,
     AlertsPanel,
     CriticalPanel,
     DashboardSummary,
@@ -86,3 +87,10 @@ def get_event_type_panel(
     event_type: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     return dashboard_service.get_event_type_panel(db, current_user.org_id, event_type)
+
+
+@router.get("/panels/agents", response_model=AgentsPanel)
+def get_agents_panel(
+    window: Window = "24h", current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    return dashboard_service.get_agents_panel(db, current_user.org_id, window)

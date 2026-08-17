@@ -130,28 +130,33 @@ export default function DashboardPage() {
                 </div>
                 <h1 style={{ fontSize: 34, letterSpacing: "-0.025em" }}>Detection posture</h1>
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  border: `1px solid ${theme.color.border}`,
-                  borderRadius: 999,
-                  overflow: "hidden",
-                }}
-              >
+              {/* Was one joined segmented-tab strip (shared outer border,
+                  overflow:hidden, inner borderRight separators) with the
+                  active segment just re-colored — .tp-glass's own border/
+                  shadow doesn't sit cleanly on one segment of a joined
+                  group (no radius of its own, would clip against the
+                  shared border). Switched to independent pills with a gap,
+                  matching how the sidebar's own glass bubble is built: each
+                  one fully rounded, the active one gets real glass. */}
+              <div style={{ display: "flex", gap: 6 }}>
                 {WINDOWS.map((w) => (
                   <span
                     key={w.key}
                     onClick={() => setTimeWindow(w.key)}
                     role="button"
                     tabIndex={0}
+                    className={timeWindow === w.key ? "tp-glass tp-glass-text" : ""}
                     style={{
                       fontSize: 14,
                       fontWeight: 600,
                       padding: "7px 14px",
+                      borderRadius: 999,
                       cursor: "pointer",
-                      background: timeWindow === w.key ? theme.color.surface : "transparent",
-                      color: timeWindow === w.key ? theme.color.accent : theme.color.textMuted,
-                      borderRight: `1px solid ${theme.color.border}`,
+                      color: timeWindow === w.key ? theme.color.text : theme.color.textMuted,
+                      // Only set inline when inactive — .tp-glass supplies its
+                      // own border for the active pill, and inline styles
+                      // would otherwise win over the class and hide it.
+                      ...(timeWindow !== w.key && { border: `1px solid ${theme.color.border}` }),
                     }}
                   >
                     {w.label}
@@ -190,6 +195,7 @@ export default function DashboardPage() {
                   historical data for that window regardless of current
                   connection status. */}
               <div
+                className={agentOfflineOnly ? "tp-agent-offline" : ""}
                 style={{
                   display: "flex",
                   flexDirection: "column",

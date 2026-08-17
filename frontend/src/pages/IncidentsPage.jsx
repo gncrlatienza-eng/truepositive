@@ -228,6 +228,7 @@ export default function IncidentsPage() {
             </div>
 
             <Card
+              className={agentOfflineOnly ? "tp-agent-offline" : ""}
               style={{
                 flex: 1,
                 minHeight: 0,

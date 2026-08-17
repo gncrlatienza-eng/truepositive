@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.models.agent import AgentPlatform, AgentStatus
 from app.models.alert import AlertStatus
 from app.models.common import Severity
 
@@ -172,3 +173,20 @@ class EventTypePanel(BaseModel):
     log_count: int
     alert_count: int
     by_severity: list[SeverityBar]
+
+
+class AgentPanelRow(BaseModel):
+    id: uuid.UUID
+    name: str
+    platform: AgentPlatform
+    status: AgentStatus
+    hostname: str | None
+    last_seen_at: datetime | None
+    is_primary: bool
+    event_count: int
+    alert_count: int
+
+
+class AgentsPanel(BaseModel):
+    window: str
+    agents: list[AgentPanelRow]

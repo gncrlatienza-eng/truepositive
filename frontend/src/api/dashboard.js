@@ -42,3 +42,7 @@ export function getRulePanel(ruleId) {
 export function getEventTypePanel(eventType) {
   return api.get(`/dashboard/panels/event-type/${encodeURIComponent(eventType)}`).then((r) => r.data);
 }
+
+export function getAgentsPanel(timeWindow = "24h") {
+  return api.get("/dashboard/panels/agents", { params: { window: timeWindow } }).then((r) => r.data);
+}

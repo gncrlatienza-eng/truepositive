@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { theme } from "../../styles/theme";
 import { useAuth } from "../../context/AuthContext";
+import { useDelayedHover } from "../../hooks/useDelayedHover";
+import GlobalSearch from "./GlobalSearch";
 
 const ROLE_LABELS = { admin: "Admin", lead: "SOC Lead", analyst: "Analyst", read_only: "Read only" };
 
@@ -19,11 +21,12 @@ function crumbLeafFor(pathname) {
   return CRUMB_LEAVES.find((c) => pathname.startsWith(c.prefix))?.label || "";
 }
 
-export default function TopBar({ collapsed, onToggleSidebar }) {
+export default function TopBar() {
   const { user, org, logout } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const orgBadgeHover = useDelayedHover();
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -49,7 +52,13 @@ export default function TopBar({ collapsed, onToggleSidebar }) {
         left: 0,
         right: 0,
         height: 64,
-        background: theme.color.surface,
+        // Frosted glass instead of a flat opaque fill — this bar is
+        // position:fixed with every page's own content scrolling underneath
+        // it, which is exactly the situation a translucent blurred surface
+        // (rather than a solid color) reads as "glass" instead of "gray box."
+        background: "rgba(20, 20, 23, 0.72)",
+        backdropFilter: "blur(20px) saturate(180%)",
+        WebkitBackdropFilter: "blur(20px) saturate(180%)",
         borderBottom: `1px solid ${theme.color.border}`,
         padding: "0 24px",
         display: "flex",
@@ -71,7 +80,7 @@ export default function TopBar({ collapsed, onToggleSidebar }) {
               height: 30,
               borderRadius: 7,
               background: theme.color.accent,
-              color: "#0F1219",
+              color: "#0A0A0C",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -84,66 +93,46 @@ export default function TopBar({ collapsed, onToggleSidebar }) {
           >
             &gt;
           </div>
+          {/* Was plain single-color text — the same two-tone split
+              (True=text, Positive=accent) already used on Login/Onboarding
+              is the real wordmark; this was the one place still missing it. */}
           <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
-            TruePositive
+            <span style={{ color: theme.color.text }}>True</span>
+            <span style={{ color: theme.color.accent }}>Positive</span>
           </span>
         </Link>
 
-        <button
-          type="button"
-          onClick={onToggleSidebar}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 32,
-            height: 32,
-            borderRadius: 7,
-            cursor: "pointer",
-            color: theme.color.textMuted,
-            flexShrink: 0,
-            background: "none",
-            border: "none",
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <rect x="3.5" y="4" width="17" height="16" rx="3" stroke="currentColor" strokeWidth="1.6" />
-            <line x1="9.5" y1="4.6" x2="9.5" y2="19.4" stroke="currentColor" strokeWidth="1.6" />
-            <path
-              d="M6.5 9.5L4.3 12L6.5 14.5"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              style={{ transform: collapsed ? "scaleX(-1)" : "none", transformOrigin: "6px 12px" }}
-            />
-          </svg>
-        </button>
-
         <div style={{ width: 1, height: 22, background: theme.color.border }} />
 
-        <div
+        {/* Was inert display text. No multi-org membership exists in this
+            app's data model (User.org_id is a single FK, not a join table)
+            so this can't be a real workspace switcher — but it shouldn't
+            have been dead either. Links to Settings, where the org's own
+            details actually live. */}
+        <Link
+          to="/settings"
+          title="Org settings"
+          className={`tp-topbar-orgbadge tp-glass-subtle tp-glass-subtle-text${orgBadgeHover.hovered ? " tp-hover-brighten" : ""}`}
+          onMouseEnter={orgBadgeHover.onMouseEnter}
+          onMouseLeave={orgBadgeHover.onMouseLeave}
           style={{
             display: "flex",
             alignItems: "center",
             gap: 8,
             padding: "6px 11px",
-            border: `1px solid ${theme.color.border}`,
             borderRadius: 6,
             fontSize: 13,
             fontFamily: theme.font.mono,
-            color: theme.color.textMuted,
+            color: theme.color.text,
             whiteSpace: "nowrap",
+            textDecoration: "none",
           }}
         >
           <span
             style={{ width: 7, height: 7, borderRadius: "50%", background: theme.color.severity.ok, flexShrink: 0 }}
           />
           <span>{org?.slug || "workspace"}</span>
-        </div>
+        </Link>
       </div>
 
       <div
@@ -167,36 +156,7 @@ export default function TopBar({ collapsed, onToggleSidebar }) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-        {/* Visual-only this sprint — no backing search feature yet. */}
-        <div
-          className="tp-topbar-search"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 9,
-            background: theme.color.background,
-            border: `1px solid ${theme.color.border}`,
-            borderRadius: 7,
-            padding: "8px 10px 8px 12px",
-            width: 220,
-            boxSizing: "border-box",
-            cursor: "default",
-          }}
-        >
-          <span style={{ fontSize: 13, color: theme.color.textFaint, flex: 1 }}>Search events, IPs, rules</span>
-          <span
-            style={{
-              fontSize: 11,
-              fontFamily: theme.font.mono,
-              color: theme.color.textMuted,
-              border: `1px solid ${theme.color.border}`,
-              borderRadius: 3,
-              padding: "1px 5px",
-            }}
-          >
-            ⌘K
-          </span>
-        </div>
+        <GlobalSearch />
         <div style={{ width: 1, height: 22, background: theme.color.border }} />
         <div ref={menuRef} style={{ position: "relative" }}>
           <button
@@ -221,7 +181,7 @@ export default function TopBar({ collapsed, onToggleSidebar }) {
                 height: 34,
                 borderRadius: "50%",
                 background: theme.color.accent,
-                color: "#0F1219",
+                color: "#0A0A0C",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -248,10 +208,12 @@ export default function TopBar({ collapsed, onToggleSidebar }) {
                 top: "calc(100% + 8px)",
                 right: 0,
                 minWidth: 200,
-                background: theme.color.surface,
-                border: `1px solid ${theme.color.border}`,
+                background: "rgba(20, 20, 23, 0.78)",
+                backdropFilter: "blur(20px) saturate(180%)",
+                WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                border: "1px solid rgba(255,255,255,0.12)",
                 borderRadius: theme.radius.md,
-                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), 0 8px 24px rgba(0, 0, 0, 0.4)",
                 zIndex: 200,
                 overflow: "hidden",
               }}

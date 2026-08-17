@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { theme } from "../../styles/theme";
 import { Sparkline } from "../charts/Sparkline";
 import { InfoTooltip } from "../common/InfoTooltip";
+import { useDelayedHover } from "../../hooks/useDelayedHover";
 
 // Plain-English explanations for people new to what these numbers mean —
 // frontend-only content keyed on the same kpi.key the backend already sends
@@ -30,6 +31,7 @@ function deltaColor(kpi) {
 export function KpiCard({ kpi, onClick }) {
   const prevValue = useRef(kpi.value);
   const [flash, setFlash] = useState(false);
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
 
   useEffect(() => {
     if (prevValue.current !== kpi.value) {
@@ -46,7 +48,9 @@ export function KpiCard({ kpi, onClick }) {
       onClick={onClick}
       role="button"
       tabIndex={0}
-      className={`tp-kpi-card ${flash ? "tp-kpi-flash" : ""}`.trim()}
+      className={["tp-kpi-card", flash && "tp-kpi-flash", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{
         background: theme.color.surface,
         borderRadius: theme.radius.lg,

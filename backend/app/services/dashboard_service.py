@@ -13,6 +13,8 @@ from app.models.common import Severity
 from app.models.log import Log
 from app.models.log_source import LogSource
 from app.schemas.dashboard import (
+    AgentPanelRow,
+    AgentsPanel,
     AlertQueueItem,
     AlertsPanel,
     AlertTypeRow,
@@ -794,3 +796,49 @@ def get_event_type_panel(db: Session, org_id: uuid.UUID, event_type: str) -> Eve
     ]
 
     return EventTypePanel(event_type=event_type, log_count=log_count, alert_count=alert_count, by_severity=by_severity)
+
+
+def get_agents_panel(db: Session, org_id: uuid.UUID, window: Window = "24h") -> AgentsPanel:
+    """Sprint 7: the "Agents online X/Y" drill-down, enriched with real
+    per-agent event/alert counts for the current window instead of just
+    connection status. Backs `AgentsPanel.jsx`.
+    """
+    since = datetime.now(UTC) - _WINDOW_DELTAS[window]
+    agents = agent_service.list_agents(db, org_id)  # reuses the existing lazy staleness sweep
+
+    event_rows = db.execute(
+        select(Log.agent_id, func.count())
+        .where(Log.org_id == org_id, Log.agent_id.is_not(None), Log.timestamp >= since)
+        .group_by(Log.agent_id)
+    ).all()
+    # mypy can't narrow Log.agent_id's nullable ORM type from the SQL-level
+    # `.is_not(None)` filter above, even though it already guarantees no NULLs
+    # come back — the comprehension re-asserts that at the Python level.
+    event_counts: dict[uuid.UUID, int] = {agent_id: count for agent_id, count in event_rows if agent_id is not None}
+
+    # Same join pattern as get_event_type_panel's alert_count above — Alert
+    # has no agent_id of its own, only via the log it was raised from.
+    alert_rows = db.execute(
+        select(Log.agent_id, func.count())
+        .select_from(Alert)
+        .join(Log, Log.id == Alert.log_id)
+        .where(Alert.org_id == org_id, Log.agent_id.is_not(None), Alert.created_at >= since)
+        .group_by(Log.agent_id)
+    ).all()
+    alert_counts: dict[uuid.UUID, int] = {agent_id: count for agent_id, count in alert_rows if agent_id is not None}
+
+    rows = [
+        AgentPanelRow(
+            id=agent.id,
+            name=agent.name,
+            platform=agent.platform,
+            status=agent.status,
+            hostname=agent.hostname,
+            last_seen_at=agent.last_seen_at,
+            is_primary=agent.is_primary,
+            event_count=event_counts.get(agent.id, 0),
+            alert_count=alert_counts.get(agent.id, 0),
+        )
+        for agent in agents
+    ]
+    return AgentsPanel(window=window, agents=rows)

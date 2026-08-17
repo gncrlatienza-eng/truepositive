@@ -31,15 +31,19 @@ export default function Modal({ open, onClose, title, children, footer, width = 
       }}
     >
       <div
-        className="tp-modal-card"
+        className="tp-modal-card tp-glass"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
           maxWidth: width,
           maxHeight: "90vh",
           overflowY: "auto",
-          background: theme.color.surface,
-          border: `1px solid ${theme.color.border}`,
+          // .tp-glass supplies the frosted background/border/highlight —
+          // this needs its own solid-ish backing tint underneath that so
+          // dense form content (most of what lives in a modal) stays fully
+          // legible rather than reading whatever's scrolling behind it too
+          // strongly; .tp-glass's own translucent layer sits on top of this.
+          backgroundColor: "rgba(20, 20, 23, 0.55)",
           borderRadius: theme.radius.lg,
           padding: theme.space[6],
         }}

@@ -1,10 +1,17 @@
 import { theme } from "../../styles/theme";
+import { useDelayedHover } from "../../hooks/useDelayedHover";
 
 // Shared card chrome — dedupes the #1A1E2E/border/radius:8px block repeated
 // across every dashboard panel and settings list in the mockup.
 export function Card({ title, action, children, className = "", style, bodyStyle }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
   return (
-    <div className={`tp-card ${className}`.trim()} style={{ overflow: "hidden", ...style }}>
+    <div
+      className={["tp-card", hovered && "tp-hover-glow", className].filter(Boolean).join(" ")}
+      style={{ overflow: "hidden", ...style }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
       {(title || action) && (
         <div
           style={{

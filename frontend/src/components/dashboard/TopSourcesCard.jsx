@@ -13,7 +13,11 @@ export function TopSourcesCard({ rows }) {
       bodyStyle={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}
     >
       <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-        {rows.length === 0 && <div style={{ fontSize: 13, color: theme.color.textFaint }}>No source activity yet.</div>}
+        {rows.length === 0 && (
+          <div style={{ fontSize: 13, color: theme.color.textFaint, textAlign: "center", padding: "20px 0" }}>
+            No source activity yet.
+          </div>
+        )}
         {rows.map((s) => (
           <div key={s.source_id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span
