@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { theme } from "../../styles/theme";
 import * as dashboardApi from "../../api/dashboard";
-import { listAgents } from "../../api/agents";
+import { setPrimaryAgent } from "../../api/agents";
 import CriticalPanel from "./panels/CriticalPanel";
 import IngestionPanel from "./panels/IngestionPanel";
 import EventsPanel from "./panels/EventsPanel";
@@ -44,7 +44,7 @@ function fetchPanel(panel, timeWindow) {
     case "eventType":
       return dashboardApi.getEventTypePanel(panel.key);
     case "agents":
-      return listAgents();
+      return dashboardApi.getAgentsPanel(timeWindow);
     default:
       return Promise.resolve(null);
   }
@@ -118,12 +118,21 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
   useEffect(() => {
     if (panel.type !== "agents") return undefined;
     const interval = setInterval(() => {
-      listAgents()
+      dashboardApi
+        .getAgentsPanel(timeWindow)
         .then(setData)
         .catch(() => {});
     }, 30_000);
     return () => clearInterval(interval);
-  }, [panel]);
+  }, [panel, timeWindow]);
+
+  // Owned here (not inside AgentsPanel) so the panel component stays a pure
+  // presentational component like every other panel in this file — the
+  // mutation + refetch-to-reflect-the-new-single-primary lives with the
+  // rest of this drawer's data-fetching logic instead.
+  function handleSetPrimary(agentId) {
+    return setPrimaryAgent(agentId).then(() => dashboardApi.getAgentsPanel(timeWindow).then(setData));
+  }
 
   return (
     <div
@@ -189,7 +198,7 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
             {panel.type === "severity" && <SeverityPanel data={data} />}
             {panel.type === "rule" && <RulePanel data={data} />}
             {panel.type === "eventType" && <EventTypePanel data={data} />}
-            {panel.type === "agents" && <AgentsPanel data={data} />}
+            {panel.type === "agents" && <AgentsPanel data={data} onSetPrimary={handleSetPrimary} />}
           </>
         )}
       </div>

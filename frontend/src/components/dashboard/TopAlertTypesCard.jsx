@@ -9,7 +9,11 @@ export function TopAlertTypesCard({ rows, onSelect }) {
       action={<span style={{ fontSize: 13, color: theme.color.textMuted, letterSpacing: "0.06em" }}>BY RULE</span>}
     >
       <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
-        {rows.length === 0 && <div style={{ fontSize: 13, color: theme.color.textFaint }}>No alerts yet.</div>}
+        {rows.length === 0 && (
+          <div style={{ fontSize: 13, color: theme.color.textFaint, textAlign: "center", padding: "20px 0" }}>
+            No alerts yet.
+          </div>
+        )}
         {rows.map((r) => (
           <div
             key={r.rule_id}

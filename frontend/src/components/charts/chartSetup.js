@@ -121,6 +121,10 @@ export const arcPercentLabelsPlugin = {
     const data = chart.data.datasets[0]?.data ?? [];
     const total = data.reduce((sum, v) => sum + v, 0);
     if (!total) return;
+    // A single non-zero segment is trivially 100% of the ring — stamping
+    // "100%" on it is redundant with the center total right next to it
+    // (and reads oddly, since it's not really "a share of something").
+    if (data.filter((v) => v > 0).length <= 1) return;
 
     const meta = chart.getDatasetMeta(0);
     const { ctx } = chart;

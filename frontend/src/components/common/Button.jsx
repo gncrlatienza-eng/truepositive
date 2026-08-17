@@ -7,10 +7,17 @@ const SIZES = {
 };
 
 const VARIANTS = {
-  primary: { background: theme.color.accent, color: "#0F1219" },
-  secondary: { background: "transparent", color: theme.color.text, border: `1px solid ${theme.color.border}` },
+  // primary/danger stay solid — they're the "this is the action to take"
+  // CTAs, and glass's whole point is translucency, which is the wrong
+  // property for something that needs to visually pop above everything
+  // else. secondary was already transparent-with-a-border, i.e. already
+  // halfway to glass — that's the one that actually becomes real glass.
+  primary: { background: theme.color.accent, color: "#0A0A0C" },
+  secondary: { color: theme.color.text },
   danger: { background: theme.color.severity.critical, color: "#fff" },
 };
+
+const GLASS_VARIANTS = new Set(["secondary"]);
 
 // Compact Button (primary/secondary/danger, sm/md/lg) for the app shell and
 // dashboard — distinct from the full-width pill buttons in
@@ -19,12 +26,13 @@ const VARIANTS = {
 export function Button({ variant = "primary", size = "md", className = "", style, disabled, children, ...props }) {
   const variantStyle = VARIANTS[variant] || VARIANTS.primary;
   const sizeStyle = SIZES[size] || SIZES.md;
+  const isGlass = GLASS_VARIANTS.has(variant);
   return (
     <button
       type="button"
       disabled={disabled}
       {...props}
-      className={`tp-btn2 tp-btn2-${variant} ${className}`.trim()}
+      className={`tp-btn2 tp-btn2-${variant} ${isGlass ? "tp-glass tp-glass-text" : ""} ${className}`.trim()}
       style={{
         display: "inline-flex",
         alignItems: "center",

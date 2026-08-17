@@ -9,11 +9,12 @@ const STATUS_COLORS = {
   pending: theme.color.textMuted,
 };
 
-// Backs the status banner's "Agents online X/Y" drill-down — reuses the
-// plain agent list (`GET /agents`, same data Settings → Sources already
-// shows) rather than a dedicated dashboard endpoint.
-export default function AgentsPanel({ data }) {
-  const agents = data || [];
+// Backs the status banner's "Agents online X/Y" drill-down — GET
+// /dashboard/panels/agents (Sprint 7), which enriches the plain agent list
+// with real per-agent event/alert counts for the current window and the
+// is_primary flag, instead of just connection status.
+export default function AgentsPanel({ data, onSetPrimary }) {
+  const agents = data?.agents || [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Section title={`${agents.length} agent${agents.length === 1 ? "" : "s"}`}>
@@ -30,18 +31,44 @@ export default function AgentsPanel({ data }) {
                   justifyContent: "space-between",
                   gap: 12,
                   padding: "10px 12px",
-                  border: `1px solid ${theme.color.border}`,
+                  border: `1px solid ${a.is_primary ? theme.color.accent : theme.color.border}`,
                   borderRadius: theme.radius.md,
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{a.name}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{a.name}</div>
+                    {a.is_primary && <Badge color={theme.color.accent}>Primary</Badge>}
+                  </div>
                   <div style={{ fontSize: 12, color: theme.color.textFaint }}>
                     {a.hostname || "not registered yet"}
                     {a.last_seen_at ? ` · last seen ${formatTimestamp(a.last_seen_at)}` : ""}
                   </div>
+                  <div style={{ fontSize: 12, color: theme.color.textFaint, marginTop: 2 }}>
+                    {a.event_count.toLocaleString()} event{a.event_count === 1 ? "" : "s"} ·{" "}
+                    {a.alert_count.toLocaleString()} alert{a.alert_count === 1 ? "" : "s"} this window
+                  </div>
                 </div>
-                <Badge color={STATUS_COLORS[a.status]}>{a.status}</Badge>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <Badge color={STATUS_COLORS[a.status]}>{a.status}</Badge>
+                  {!a.is_primary && onSetPrimary && (
+                    <button
+                      type="button"
+                      onClick={() => onSetPrimary(a.id)}
+                      style={{
+                        background: "none",
+                        border: `1px solid ${theme.color.border}`,
+                        borderRadius: theme.radius.sm,
+                        color: theme.color.textMuted,
+                        fontSize: 11,
+                        padding: "4px 8px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Mark as primary
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

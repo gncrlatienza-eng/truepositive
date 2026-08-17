@@ -1,5 +1,15 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, ScrollText, Bell, Siren, FileBarChart2, ShieldCheck, Settings2 } from "lucide-react";
+import {
+  Activity,
+  FileText,
+  Bell,
+  AlertTriangle,
+  FileBarChart2,
+  ShieldCheck,
+  Settings2,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 import { theme } from "../../styles/theme";
 
 // Icon set: lucide-react v0.x (MIT). Selected over continuing to hand-roll
@@ -12,11 +22,19 @@ import { theme } from "../../styles/theme";
 const ICON_SIZE = 22;
 const ICON_STROKE = 1.6; // slightly heavier than Lucide's default 2px to match this dark UI's weight
 
+// logs/incidents were ScrollText/Siren — both noticeably busier (dashed
+// "text" lines / sparkle marks around the bell) than the plain-outline rest
+// of this set, which read as inconsistent at sidebar scale. Swapped for
+// FileText/AlertTriangle, same stroke weight, no decorative detail.
+// dashboard was LayoutDashboard (a generic 4-square grid — the single most
+// reused "any admin template" glyph there is). Swapped for Activity (a
+// pulse/waveform line), which actually reads as "live detection posture"
+// instead of "generic SaaS dashboard #4212".
 const ICONS = {
-  dashboard: <LayoutDashboard size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
-  logs: <ScrollText size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  dashboard: <Activity size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  logs: <FileText size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
   alerts: <Bell size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
-  incidents: <Siren size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
+  incidents: <AlertTriangle size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
   reports: <FileBarChart2 size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
   intel: <ShieldCheck size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
   settings: <Settings2 size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />,
@@ -40,7 +58,7 @@ function navItems(criticalCount) {
   ];
 }
 
-export default function Sidebar({ railW, collapsed, criticalCount }) {
+export default function Sidebar({ railW, collapsed, criticalCount, onToggleSidebar }) {
   return (
     <div
       style={{
@@ -67,21 +85,27 @@ export default function Sidebar({ railW, collapsed, criticalCount }) {
             to={item.to}
             end={item.end}
             title={item.title}
-            className="tp-sidebar-item"
+            className={({ isActive }) => `tp-sidebar-item${isActive ? " tp-glass tp-glass-text" : ""}`}
             style={({ isActive }) => ({
+              position: "relative",
               display: "flex",
-              flexDirection: "column",
+              flexDirection: "row",
               alignItems: "center",
-              gap: 8,
-              padding: "15px 4px",
-              borderRadius: 8,
+              gap: 12,
+              padding: collapsed ? "12px 4px" : "11px 14px",
+              justifyContent: collapsed ? "center" : "flex-start",
+              borderRadius: 18,
               cursor: "pointer",
-              color: isActive ? theme.color.accent : theme.color.textMuted,
-              background: isActive ? "rgba(8, 145, 178, 0.1)" : "transparent",
+              // No hue on the glass itself or the text/icon on top of it —
+              // colored "glass" reads as tinted plastic, not glass. The
+              // blur/translucency/highlight from .tp-glass *is* the active
+              // cue now; color isn't doing that job anymore.
+              color: isActive ? theme.color.text : theme.color.textMuted,
+              transition: "background 150ms ease, box-shadow 150ms ease",
             })}
           >
             {/* Icon wrapper — position:relative so the badge floats top-right
-                of the icon without affecting the label below it.             */}
+                of the icon itself, independent of the label beside it. */}
             <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
               {ICONS[item.icon]}
               {item.badge != null && (
@@ -109,6 +133,35 @@ export default function Sidebar({ railW, collapsed, criticalCount }) {
           </NavLink>
         ))}
       </div>
+
+      {/* Collapse/expand toggle — moved down here (was in TopBar) so it
+          lives with the thing it actually controls. */}
+      <button
+        type="button"
+        onClick={onToggleSidebar}
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        style={{
+          marginTop: "auto",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          padding: "10px 4px",
+          borderRadius: 8,
+          cursor: "pointer",
+          color: theme.color.textMuted,
+          background: "none",
+          border: `1px solid ${theme.color.border}`,
+          flexShrink: 0,
+        }}
+      >
+        {collapsed ? (
+          <PanelLeftOpen size={18} strokeWidth={1.6} aria-hidden="true" />
+        ) : (
+          <PanelLeftClose size={18} strokeWidth={1.6} aria-hidden="true" />
+        )}
+      </button>
     </div>
   );
 }

@@ -689,7 +689,17 @@ def run_gui(base: str, agent_id: str, agent_key: str) -> None:
             except AgentRequestError as exc:
                 set_status("Heartbeat failed", str(exc))
                 log(str(exc))
-            _collect_and_ship(base, agent_id, agent_key, state, log_fn=log)
+            try:
+                _collect_and_ship(base, agent_id, agent_key, state, log_fn=log)
+            except Exception as exc:  # noqa: BLE001 — deliberately broad: this call used
+                # to sit outside any try/except, so anything it raised (not just
+                # AgentRequestError — e.g. a transient OSError from a Windows Event
+                # Log read, or a network hiccup mid-request during a backend
+                # restart) permanently killed this whole thread with no way to
+                # recover short of relaunching the agent. Real-world symptom: an
+                # agent that looks "running" in Task Manager but has a frozen
+                # last_seen_at forever. Log and keep looping instead.
+                log(f"Collection cycle failed unexpectedly: {exc}")
 
     def on_close() -> None:
         # The close button used to stop_event.set() + destroy() the whole
@@ -746,7 +756,10 @@ def run_silent(base: str, agent_id: str, agent_key: str) -> None:
             _write_status("Connected", f"last heartbeat {beat['last_seen_at']}", agent_id)
         except AgentRequestError as exc:
             _write_status("Heartbeat failed", str(exc), agent_id)
-        _collect_and_ship(base, agent_id, agent_key, state, log_fn=lambda _msg: None)
+        try:
+            _collect_and_ship(base, agent_id, agent_key, state, log_fn=lambda _msg: None)
+        except Exception as exc:  # noqa: BLE001 — see worker()'s identical guard above
+            _write_status("Collection failed", str(exc), agent_id)
 
 
 def _validate_connect_fields(url: str, agent_id: str, agent_key: str) -> dict | None:

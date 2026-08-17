@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.session import Base
@@ -43,6 +43,10 @@ class Agent(Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enrollment_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # "This is my main machine" — at most one True per org, enforced in
+    # agent_service.set_primary_agent (unsets any previous one first), not a
+    # DB constraint. Purely organizational: doesn't affect ingestion/routing.
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     @property

@@ -304,6 +304,34 @@ def test_report_source_status_rejects_unowned_source(client, auth_headers):
     assert response.status_code == 422
 
 
+def test_new_agent_defaults_not_primary(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    assert created["agent"]["is_primary"] is False
+
+
+def test_set_primary_agent_unsets_previous(client, auth_headers):
+    first = _create_agent(client, auth_headers, name="dc-01")
+    second = _create_agent(client, auth_headers, name="dc-02")
+
+    set_first = client.post(f"/agents/{first['agent']['id']}/primary", headers=auth_headers)
+    assert set_first.status_code == 200, set_first.text
+    assert set_first.json()["is_primary"] is True
+
+    set_second = client.post(f"/agents/{second['agent']['id']}/primary", headers=auth_headers)
+    assert set_second.status_code == 200
+    assert set_second.json()["is_primary"] is True
+
+    # Only one agent is primary at a time — setting the second must unset the first.
+    first_after = client.get(f"/agents/{first['agent']['id']}", headers=auth_headers)
+    assert first_after.json()["is_primary"] is False
+
+
+def test_cross_org_set_primary_404(client, auth_headers, second_org_headers):
+    created = _create_agent(client, auth_headers)
+    response = client.post(f"/agents/{created['agent']['id']}/primary", headers=second_org_headers)
+    assert response.status_code == 404
+
+
 def test_download_windows_installer_404_when_not_built(client, monkeypatch, tmp_path):
     monkeypatch.setattr(agents_routes, "AGENT_BINARY_DIR", tmp_path)
     response = client.get("/agents/download/windows-installer")

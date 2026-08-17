@@ -261,18 +261,24 @@ Also fixed pre-existing bug found while testing this sprint: `/onboarding` was w
 **Added mid-plan, 2026-08-15, at the user's explicit request** — not in the original 8-sprint plan, but not scope creep either: the source manifest (`reference/ALL_22_FILES_COMPLETE_MANIFEST.md`) already lists "Multi-Agent Management — dashboard for all agents" under its own "Advanced Features," bundled with Playbooks/Integrations late in *its* roadmap. Given a dedicated slot here rather than folded into Sprint 6 (already flagged as the highest-nested-UI-state sprint so far) or deferred to Phase 2 (the user wanted it sooner than that). Deliberately scoped to the **lighter** of two options discussed — enriching the existing Agents drill-down panel — rather than a full per-device dashboard filter/switcher (re-scoping every Overview chart to a single agent), which would be materially larger backend work for the same core value at this stage.
 
 **Backend**
-- [ ] New `GET /dashboard/panels/agents` endpoint, matching the existing per-panel convention already established in `dashboard.py`/`dashboard_service.py` (critical/ingestion/events/alerts/triage/risk/severity/rule/event-type) — returns, per agent, its status, last-seen, and event/alert counts for the dashboard's current time window. Replaces `AgentsPanel.jsx`'s current reuse of the plain `GET /agents` list, which carries no counts today.
-- [ ] `is_primary` boolean on the `Agent` model (new Alembic migration) + an endpoint to mark exactly one agent per org as primary (unsetting any previous one) — the "this is my main machine" labeling from the user's own framing. Purely organizational: doesn't change where the backend runs or how ingestion works.
+- [x] New `GET /dashboard/panels/agents` endpoint, matching the existing per-panel convention already established in `dashboard.py`/`dashboard_service.py` (critical/ingestion/events/alerts/triage/risk/severity/rule/event-type) — returns, per agent, its status, last-seen, and event/alert counts for the dashboard's current time window. Replaces `AgentsPanel.jsx`'s current reuse of the plain `GET /agents` list, which carries no counts today.
+- [x] `is_primary` boolean on the `Agent` model (migration `0009_agent_is_primary.py`) + `POST /agents/{id}/primary` to mark exactly one agent per org as primary (unsets any previous one first, inside the same transaction — enforced at the service layer, not a DB constraint, consistent with how staleness/credential-expiry are already enforced in `agent_service.py`).
 
 **Frontend**
-- [ ] `AgentsPanel.jsx` (Overview's "Agents online X/Y" drill-down, built in Sprint 5) shows each agent's real event/alert counts for the current window alongside its existing status/last-seen.
-- [ ] "Mark as primary" action in Settings → Sources' Agents list, with a small badge on whichever agent is currently primary (shown there and in the Agents drill-down).
+- [x] `AgentsPanel.jsx` (Overview's "Agents online X/Y" drill-down, built in Sprint 5) shows each agent's real event/alert counts for the current window alongside its existing status/last-seen, plus a "Primary" badge and a "Mark as primary" action per row.
+- [x] "Mark as primary" action in Settings → Sources' Agents list, with a small badge on whichever agent is currently primary (shown there and in the Agents drill-down) — both surfaces call the same `POST /agents/{id}/primary` endpoint.
 
 **Acceptance Criteria**
-- Opening the Agents drill-down panel shows real, per-agent event and alert counts for the current time window, not just connection status.
-- Exactly one agent can be marked "Primary" per org at a time, visibly badged in both the Agents drill-down and Settings → Sources.
+- [x] Opening the Agents drill-down panel shows real, per-agent event and alert counts for the current time window, not just connection status.
+- [x] Exactly one agent can be marked "Primary" per org at a time, visibly badged in both the Agents drill-down and Settings → Sources.
 
-**Dependencies:** Sprint 4 (the Agents drill-down panel this extends), Sprint 5 (real ingestion — nothing to count without it).
+**Implementation notes (2026-08-16)**
+- 6 new backend tests (`test_dashboard.py` × 3 for the panel — distinct per-agent counts, window filtering, cross-org isolation; `test_agents.py` × 3 for the primary flag — defaults to false, setting one unsets the previous, cross-org 404). Full suite: 110/110 passing.
+- Alert counts per agent join through `Log` (`Alert.log_id → Log.id`, filtered on `Log.agent_id`) since `Alert` has no `agent_id` of its own — same join pattern already used by `get_event_type_panel`.
+- A real bug caught before it shipped: `AgentPanelRow` initially typed `platform`/`status` as plain `str` and the service passed `agent.platform.value`/`agent.status.value` — crashed in tests with `AttributeError: 'str' object has no attribute 'value'` when a test fixture constructed an `Agent` with a plain string instead of the enum. Fixed by typing those fields as the actual `AgentPlatform`/`AgentStatus` enums (matching `AgentOut`'s own convention) and passing the attributes directly — Pydantic handles the str/enum coercion either way, so this is more correct in general, not just test-friendly.
+- Verified live end-to-end (not just unit tests): fresh org, 2 real agents shipping different log volumes, confirmed the drill-down panel shows distinct real counts (3 vs 1) via a real ingestion call; marked one primary via the real UI button, confirmed exactly one `is_primary: true` across the org via the API, and confirmed the badge/button state matches in both the Overview drill-down and Settings → Sources after the switch. Zero console/page errors throughout.
+
+**Dependencies:** Sprint 4 (the Agents drill-down panel this extends), Sprint 5 (real ingestion — nothing to count without it). ✓
 **Risk:** Low — additive to existing endpoints and an existing panel, no new pages, one small schema addition. First candidate to cut from the Sprint 4 Velocity Checkpoint list below if the plan is behind, since it's the least core to the original single-org detection loop.
 
 ---

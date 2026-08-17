@@ -186,6 +186,22 @@ def count_online(db: Session, org_id: uuid.UUID) -> tuple[int, int]:
     return online, total
 
 
+def set_primary_agent(db: Session, org_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
+    """Mark this agent as the org's primary, unsetting any previous one first.
+
+    Two statements in one transaction rather than a DB constraint (e.g. a
+    partial unique index) — consistent with this file's other invariants
+    (staleness, credential expiry) being enforced here rather than in the
+    schema.
+    """
+    agent = get_agent(db, org_id, agent_id)
+    db.execute(update(Agent).where(Agent.org_id == org_id, Agent.is_primary.is_(True)).values(is_primary=False))
+    agent.is_primary = True
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+
 def delete_agent(db: Session, org_id: uuid.UUID, agent_id: uuid.UUID) -> None:
     agent = get_agent(db, org_id, agent_id)
     # Detach rather than cascade-delete: a log source someone configured is

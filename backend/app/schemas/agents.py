@@ -33,6 +33,7 @@ class AgentOut(BaseModel):
     status: AgentStatus
     hostname: str | None
     last_seen_at: datetime | None
+    is_primary: bool
     created_at: datetime
     enrollment_expires_at: datetime | None
     # Re-exposed (not just returned once) via Agent.enrollment_key while the

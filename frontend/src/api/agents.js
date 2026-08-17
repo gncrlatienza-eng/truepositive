@@ -19,3 +19,7 @@ export function deleteAgent(agentId) {
 export function rotateAgentKey(agentId) {
   return api.post(`/agents/${agentId}/rotate-key`).then((r) => r.data);
 }
+
+export function setPrimaryAgent(agentId) {
+  return api.post(`/agents/${agentId}/primary`).then((r) => r.data);
+}

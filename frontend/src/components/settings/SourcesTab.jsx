@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
-import { deleteAgent, listAgents } from "../../api/agents";
+import { deleteAgent, listAgents, setPrimaryAgent } from "../../api/agents";
 import { deleteSource, listSources, updateSource } from "../../api/sources";
 import AgentCredentialsCard from "../agents/AgentCredentialsCard";
+import { Badge } from "../common/Badge";
 import ConfirmModal from "../common/ConfirmModal";
 import ConnectSourceModal from "./ConnectSourceModal";
 import DeployAgentModal from "./DeployAgentModal";
@@ -94,6 +95,19 @@ export default function SourcesTab() {
     }
   }
 
+  async function performSetPrimary(agent) {
+    setError("");
+    try {
+      const updated = await setPrimaryAgent(agent.id);
+      // Only one agent is primary at a time — reflect that unset locally
+      // too, rather than waiting on a refetch, same immediacy as the other
+      // list mutations in this file.
+      setAgents((prev) => prev.map((a) => ({ ...a, is_primary: a.id === updated.id })));
+    } catch {
+      setError("Could not set that agent as primary.");
+    }
+  }
+
   function confirmDelete() {
     if (!confirmTarget) return;
     if (confirmTarget.type === "agent") performDeleteAgent(confirmTarget.item);
@@ -145,9 +159,10 @@ export default function SourcesTab() {
                       >
                         <StatusDot color={AGENT_STATUS_COLOR[a.status]} />
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
                             {a.name}{" "}
                             {a.hostname && <span style={{ color: theme.color.textMuted }}>· {a.hostname}</span>}
+                            {a.is_primary && <Badge color={theme.color.accent}>Primary</Badge>}
                           </div>
                           <div
                             style={{
@@ -160,6 +175,15 @@ export default function SourcesTab() {
                               : `${a.status} · last seen ${relativeTime(a.last_seen_at)}`}
                           </div>
                         </div>
+                        {!a.is_primary && (
+                          <OutlineButton
+                            type="button"
+                            style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+                            onClick={() => performSetPrimary(a)}
+                          >
+                            Mark as primary
+                          </OutlineButton>
+                        )}
                         <OutlineButton
                           type="button"
                           style={{

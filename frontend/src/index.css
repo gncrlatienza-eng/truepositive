@@ -10,8 +10,8 @@ body,
 
 body {
   margin: 0;
-  background: #0f1219;
-  color: #e8eaed;
+  background: #0a0a0c;
+  color: #ededef;
   font-family:
     "Inter",
     -apple-system,
@@ -33,7 +33,7 @@ body {
    per-component since every one of them just uses plain `overflow: auto`. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2d3748 transparent;
+  scrollbar-color: #242429 transparent;
 }
 
 *::-webkit-scrollbar {
@@ -46,14 +46,14 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #2d3748;
+  background: #242429;
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+  background: #57585f;
   background-clip: padding-box;
 }
 
@@ -85,9 +85,9 @@ a {
   box-sizing: border-box;
   padding: 15px 24px;
   border-radius: 999px;
-  border: 1px solid #2d3748;
-  background: #1a1e2e;
-  color: #e8eaed;
+  border: 1px solid #242429;
+  background: #141417;
+  color: #ededef;
   font-family: inherit;
   font-size: 16px;
   outline: none;
@@ -102,29 +102,69 @@ a {
 }
 
 .tp-input::placeholder {
-  color: #4b5563;
+  color: #57585f;
 }
 
 select.tp-input {
   appearance: none;
   -webkit-appearance: none;
   padding-right: 44px;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%239CA3AF'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%239B9CA4'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 20px center;
   background-size: 18px;
 }
 
 select.tp-input option {
-  background: #1a1e2e;
-  color: #e8eaed;
+  background: #141417;
+  color: #ededef;
 }
 
+/* Was just `accent-color` on the native control — renders as each OS's own
+   default checkbox (a light, System-Chrome-square-with-tick), which reads
+   as dated next to everything else in this app being custom-styled. Fully
+   custom box now, same visual language as the rest of the theme. */
 input[type="checkbox"] {
-  accent-color: #0891b2;
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
   width: 16px;
   height: 16px;
+  border-radius: 4px;
+  border: 1px solid #242429;
+  background: #141417;
   cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+input[type="checkbox"]:hover {
+  border-color: #57585f;
+}
+
+input[type="checkbox"]:checked {
+  background: #0891b2;
+  border-color: #0891b2;
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.18);
 }
 
 .tp-btn {
@@ -167,8 +207,8 @@ input[type="checkbox"] {
 
 .tp-btn-outline {
   background: transparent;
-  color: #e8eaed;
-  border-color: #2d3748;
+  color: #ededef;
+  border-color: #242429;
 }
 
 .tp-btn-outline:hover:not(:disabled) {
@@ -190,7 +230,7 @@ input[type="checkbox"] {
   flex-direction: column;
   justify-content: space-between;
   padding: 40px;
-  border-right: 1px solid #2d3748;
+  border-right: 1px solid #242429;
 }
 
 .tp-auth-shell-content {
@@ -226,7 +266,7 @@ input[type="checkbox"] {
   flex-wrap: wrap;
   gap: 16px;
   padding: 16px 32px;
-  border-bottom: 1px solid #2d3748;
+  border-bottom: 1px solid #242429;
 }
 
 .tp-onboarding-body {
@@ -339,7 +379,7 @@ input[type="checkbox"] {
   opacity: 0;
   pointer-events: none;
   z-index: 30;
-  background: rgba(10, 12, 18, 0.92);
+  background: rgba(10, 10, 12, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   padding: 6px 10px;
@@ -351,11 +391,11 @@ input[type="checkbox"] {
 }
 
 .tp-chart-tooltip-title {
-  color: #9ca3af;
+  color: #9b9ca4;
 }
 
 .tp-chart-tooltip-line {
-  color: #e8eaed;
+  color: #ededef;
   font-weight: 700;
 }
 
@@ -373,13 +413,13 @@ input[type="checkbox"] {
 .tp-chart-tooltip.top .tp-chart-tooltip-arrow {
   bottom: 100%;
   border-top: none;
-  border-bottom-color: rgba(10, 12, 18, 0.92);
+  border-bottom-color: rgba(10, 10, 12, 0.92);
 }
 
 .tp-chart-tooltip.bottom .tp-chart-tooltip-arrow {
   top: 100%;
   border-bottom: none;
-  border-top-color: rgba(10, 12, 18, 0.92);
+  border-top-color: rgba(10, 10, 12, 0.92);
 }
 
 .tp-chart-tooltip.left.center .tp-chart-tooltip-arrow {
@@ -387,7 +427,7 @@ input[type="checkbox"] {
   top: 50%;
   margin-top: -5px;
   border-left: none;
-  border-right-color: rgba(10, 12, 18, 0.92);
+  border-right-color: rgba(10, 10, 12, 0.92);
 }
 
 .tp-chart-tooltip.right.center .tp-chart-tooltip-arrow {
@@ -395,7 +435,7 @@ input[type="checkbox"] {
   top: 50%;
   margin-top: -5px;
   border-right: none;
-  border-left-color: rgba(10, 12, 18, 0.92);
+  border-left-color: rgba(10, 10, 12, 0.92);
 }
 
 /* Chart legend (chartSetup.js's htmlLegendPlugin, e.g. SeverityBreakdownCard)
@@ -429,7 +469,7 @@ input[type="checkbox"] {
   border-radius: 3px;
   flex-shrink: 0;
   cursor: pointer;
-  background: var(--tp-legend-color, #9ca3af);
+  background: var(--tp-legend-color, #9b9ca4);
   transition:
     transform 120ms ease,
     opacity 120ms ease;
@@ -443,12 +483,12 @@ input[type="checkbox"] {
    as an unchecked checkbox, still tinted with the slice's own color. */
 .tp-legend-checkbox[aria-checked="false"] {
   background: transparent;
-  box-shadow: inset 0 0 0 2px var(--tp-legend-color, #9ca3af);
+  box-shadow: inset 0 0 0 2px var(--tp-legend-color, #9b9ca4);
   opacity: 0.6;
 }
 
 .tp-legend-label {
-  color: #9ca3af;
+  color: #9b9ca4;
   flex: 1;
 }
 
@@ -458,7 +498,7 @@ input[type="checkbox"] {
 
 .tp-legend-label.clickable:hover {
   text-decoration: underline;
-  color: #e8eaed;
+  color: #ededef;
 }
 
 /* Plain-English metric explanations (frontend/src/components/common/InfoTooltip.jsx) */
@@ -474,14 +514,18 @@ input[type="checkbox"] {
 }
 
 .tp-info-tip-icon {
+  /* Was line-height/text-align "centering" — imprecise (depends on the "?"
+     glyph's own metrics, not a true midpoint) and visibly off-center.
+     Flexbox centers it for real. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  border: 1px solid #4b5563;
-  color: #9ca3af;
+  border: 1px solid #57585f;
+  color: #9b9ca4;
   font-size: 10px;
-  line-height: 13px;
-  text-align: center;
   font-weight: 700;
   font-family: inherit;
   text-transform: none;
@@ -494,14 +538,16 @@ input[type="checkbox"] {
   left: 50%;
   transform: translateX(-50%);
   width: 220px;
-  background: #1a1e2e;
-  border: 1px solid #2d3748;
+  background: rgba(20, 20, 23, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
-  color: #e8eaed;
+  color: #ededef;
   text-transform: none;
   letter-spacing: normal;
   opacity: 0;
@@ -576,8 +622,14 @@ input[type="checkbox"] {
 }
 
 .tp-btn2-secondary:hover:not(:disabled) {
-  border-color: #4b5563;
-  color: #e8eaed;
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #ededef;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.2),
+    rgba(255, 255, 255, 0.06) 55%,
+    rgba(255, 255, 255, 0.12)
+  );
 }
 
 .tp-btn2-danger:hover:not(:disabled) {
@@ -589,9 +641,9 @@ input[type="checkbox"] {
   box-sizing: border-box;
   padding: 9px 12px;
   border-radius: 6px;
-  border: 1px solid #2d3748;
-  background: #0f1219;
-  color: #e8eaed;
+  border: 1px solid #242429;
+  background: #0a0a0c;
+  color: #ededef;
   font-family: inherit;
   font-size: 13px;
   outline: none;
@@ -600,47 +652,95 @@ input[type="checkbox"] {
     box-shadow 0.15s ease;
 }
 
+/* Filter dropdowns (Logs/Alerts/Incidents' Status/Severity/Rule selects) get
+   glass too — plain text inputs (same shared class) don't, since a search
+   box you're actively typing into benefits from a plain solid background
+   more than from looking like glass. */
+select.tp-field-input {
+  background: rgba(20, 20, 23, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+select.tp-field-input:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
 .tp-field-input:focus {
   border-color: #0891b2;
   box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.18);
 }
 
 .tp-field-input::placeholder {
-  color: #4b5563;
+  color: #57585f;
 }
 
 .tp-card {
-  background: #1a1e2e;
-  border: 1px solid #2d3748;
-  border-left: 1px solid #2d3748;
+  background: #141417;
+  border: 1px solid #242429;
+  border-left: 1px solid #242429;
   border-radius: 8px;
-  transition:
-    border-left-color 150ms ease,
-    box-shadow 150ms ease;
+  transition: box-shadow 150ms ease;
 }
 
-.tp-card:hover {
-  border-left-color: #0891b2;
-  box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+/* Hollow spotlight (2026-08-16, second pass) — no color at all now, not
+   even the cyan border-left tint from the first pass: a crisp 1px hollow
+   ring right at the card's own edge (the "hollow glow" ask) plus a soft,
+   wide, very faint bloom outside it (the "spotlight" ask), both neutral
+   white. Border color itself no longer changes on hover — the ring/bloom
+   pair is the entire hover cue.
+   Was `:hover` + `transition-delay: 3s` (delay declared only on the :hover
+   rule, so it'd apply going in but not coming out) — that's the standard
+   CSS "hover-intent" technique, but it turned out to be genuinely flaky
+   under repeated hover/unhover cycles (confirmed via repeated automated
+   testing: a single hold-and-wait passed reliably, but hover → move away →
+   hover again started showing the glow instantly and non-deterministically
+   — exactly what real usage looks like, since nobody hovers a card once and
+   holds still). Replaced with a `.tp-hover-glow` class driven by a real JS
+   setTimeout (useDelayedHover, Card.jsx/KpiCard.jsx), which can't have that
+   race — this rule now only handles the fade-in once that class lands. */
+.tp-card.tp-hover-glow {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.32),
+    0 0 40px rgba(255, 255, 255, 0.16);
 }
 
 /* KpiCard.jsx doesn't use the shared Card component (different layout
    needs), so it gets its own identically-behaved hover class instead of
    fighting an inline `border` shorthand, which would otherwise always win
-   over a stylesheet :hover rule regardless of specificity. */
+   over a stylesheet class regardless of specificity. */
 .tp-kpi-card {
-  border: 1px solid #2d3748;
-  border-left: 1px solid #2d3748;
+  border: 1px solid #242429;
+  border-left: 1px solid #242429;
   transition:
-    border-left-color 150ms ease,
     box-shadow 150ms ease,
     transform 150ms ease;
 }
 
-.tp-kpi-card:hover {
-  border-left-color: #0891b2;
-  box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+.tp-kpi-card.tp-hover-glow {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.32),
+    0 0 40px rgba(255, 255, 255, 0.16);
   transform: scale(1.02);
+}
+
+/* Overview/Logs/Alerts/Incidents dim+grayscale their content while the
+   agent is offline (SetupLockOverlay's agentOfflineOnly) since it's a
+   frozen last-known snapshot, not live data — the hover "spotlight" glow
+   implies "this is a live, current surface responding to you," which is
+   exactly the wrong signal on data that stopped updating. Both the
+   self-and-.tp-card and the ancestor-and-.tp-card cases are covered since
+   Logs/Alerts/Incidents put the marker class directly on the Card that's
+   also .tp-card, while Overview puts it on a plain wrapper div containing
+   several .tp-card/.tp-kpi-card children. */
+.tp-agent-offline.tp-card.tp-hover-glow,
+.tp-agent-offline.tp-kpi-card.tp-hover-glow,
+.tp-agent-offline .tp-card.tp-hover-glow,
+.tp-agent-offline .tp-kpi-card.tp-hover-glow {
+  box-shadow: none;
+  transform: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -648,9 +748,68 @@ input[type="checkbox"] {
   .tp-kpi-card {
     transition: none;
   }
-  .tp-kpi-card:hover {
+  .tp-kpi-card.tp-hover-glow {
     transform: none;
   }
+}
+
+/* Liquid glass — shared recipe (2026-08-17, second pass). First version
+   tinted the glass itself cyan, which read as colored plastic, not glass —
+   real glass/crystal is colorless; what little color it shows comes from
+   whatever's behind it, not the material itself. This version has no hue
+   anywhere: pure white-alpha layers for the tint/highlight, and no
+   `saturate()` boost (that would amplify color bleeding through from
+   content behind it, undoing the point). Only `blur` — real optical
+   blur, no color processing. */
+.tp-glass {
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.03) 55%,
+    rgba(255, 255, 255, 0.08)
+  );
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.15),
+    0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+/* For text/icons sitting directly on a .tp-glass surface — a faint carved-
+   into-the-material look (dark shadow below for depth, a thin light catch
+   above), the same cue real embossed/engraved glass has, so text reads as
+   part of the glass instead of a flat layer pasted on top of it. */
+.tp-glass-text {
+  text-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.35),
+    0 -1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* Subtle variant — for topbar chrome (org badge, search box) that's glass
+   *at rest*, all the time, not just when active/selected like every other
+   .tp-glass consumer (sidebar active item, glass buttons, modal). Full-
+   strength .tp-glass on a permanently-visible element reads as too heavy/
+   glossy; this halves the alpha values and drops the blur radius for a
+   lighter, more realistic frosted look befitting a resting UI surface. */
+.tp-glass-subtle {
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.07),
+    rgba(255, 255, 255, 0.015) 55%,
+    rgba(255, 255, 255, 0.04)
+  );
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.tp-glass-subtle-text {
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
 }
 
 .tp-badge {
@@ -690,7 +849,7 @@ input[type="checkbox"] {
 
 .tp-panel-close:hover {
   transform: scale(1.1);
-  color: #e8eaed;
+  color: #ededef;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -714,15 +873,15 @@ input[type="checkbox"] {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #9ca3af;
+  color: #9b9ca4;
   padding: 12px 14px;
-  border-bottom: 1px solid #2d3748;
+  border-bottom: 1px solid #242429;
   /* Solid, not the translucent tint this used to be — position: sticky
      needs an opaque background or scrolled-past rows show through it. The
      table's own rows scroll underneath this pinned header now (Table.jsx),
-     so this can no longer be a see-through overlay. #1e2333 approximates
+     so this can no longer be a see-through overlay. #1C1C1F approximates
      the card surface (#1A1E2E) blended with the old 2%-white tint. */
-  background: #1e2333;
+  background: #1c1c1f;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -735,12 +894,12 @@ input[type="checkbox"] {
 }
 
 .tp-table th[data-sortable="true"]:hover {
-  color: #e8eaed;
+  color: #ededef;
 }
 
 .tp-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid #2d3748;
+  border-bottom: 1px solid #242429;
   vertical-align: middle;
 }
 
@@ -766,14 +925,21 @@ input[type="checkbox"] {
 }
 
 .tp-toast {
-  background: #1a1e2e;
-  border: 1px solid #2d3748;
+  /* Frosted instead of flat — keeps the left-edge status color (set by
+     .tp-toast-info/-success/-error below) as the one legitimate color cue;
+     everything else about the toast itself is neutral glass. */
+  background: rgba(20, 20, 23, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-left-width: 3px;
   border-radius: 8px;
   padding: 12px 16px;
   font-size: 14px;
-  color: #e8eaed;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: #ededef;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 8px 24px rgba(0, 0, 0, 0.35);
   animation: tp-pop 0.15s ease;
   min-width: 240px;
   max-width: 360px;
@@ -784,11 +950,11 @@ input[type="checkbox"] {
 }
 
 .tp-toast-success {
-  border-left-color: #047857;
+  border-left-color: #0ca30c;
 }
 
 .tp-toast-error {
-  border-left-color: #dc2626;
+  border-left-color: #d03b3b;
 }
 
 /* App shell (frontend/src/components/layout/*) */
@@ -802,8 +968,41 @@ input[type="checkbox"] {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.tp-topbar-search:hover {
-  border-color: #4b5563;
+.tp-topbar-search {
+  transition: border-color 150ms ease;
+}
+
+/* Focus (actually typing/clicked in) gets an instant border brighten —
+   that's real interaction feedback, not a decorative glow, so it shouldn't
+   wait. A passing, non-interacting hover gets the same delayed brighten as
+   the card glow (see .tp-hover-glow above) before it lights up — driven by
+   useDelayedHover (JS setTimeout) rather than `transition-delay`, which
+   turned out to be flaky across repeated hover/unhover cycles (see the
+   .tp-card.tp-hover-glow comment above for the full story). */
+.tp-topbar-search:focus-within {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.tp-topbar-search.tp-hover-brighten:not(:focus-within) {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.tp-topbar-orgbadge {
+  transition: border-color 150ms ease;
+}
+
+.tp-topbar-orgbadge:focus-visible {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.tp-topbar-orgbadge.tp-hover-brighten:not(:focus-visible) {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.tp-search-result-row:hover,
+.tp-search-result-row:focus-visible {
+  background: rgba(255, 255, 255, 0.04);
+  outline: none;
 }
 
 /* EventsOverTimeCard stat strip
@@ -815,13 +1014,13 @@ input[type="checkbox"] {
 .tp-events-stat-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  border-top: 1px solid #2d3748;
+  border-top: 1px solid #242429;
   margin-top: 12px;
 }
 
 .tp-events-stat-cell {
   padding: 18px 24px;
-  border-right: 1px solid #2d3748;
+  border-right: 1px solid #242429;
 }
 
 .tp-events-stat-cell:last-child {
@@ -841,6 +1040,6 @@ input[type="checkbox"] {
 
   /* Add a bottom border between the two rows in 2-col mode */
   .tp-events-stat-cell:nth-child(-n + 2) {
-    border-bottom: 1px solid #2d3748;
+    border-bottom: 1px solid #242429;
   }
 }

@@ -130,6 +130,15 @@ def delete_agent(agent_id: uuid.UUID, current_user: User = Depends(get_current_u
     agent_service.delete_agent(db, current_user.org_id, agent_id)
 
 
+# Marks this agent as the org's "main machine" — unsets any previous primary
+# first, so at most one is ever true per org (Sprint 7).
+@router.post("/{agent_id}/primary", response_model=AgentOut)
+def set_primary_agent(
+    agent_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    return agent_service.set_primary_agent(db, current_user.org_id, agent_id)
+
+
 # For when the original download/config was lost — issues a new credential
 # (invalidating the old one) so a pending/disconnected agent can be
 # redeployed without deleting and recreating it.
