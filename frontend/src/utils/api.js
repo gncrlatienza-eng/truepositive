@@ -1,10 +1,23 @@
 import axios from "axios";
 
-// Fixed by docker-compose's port mapping in every local setup (dev server or
-// nginx-served build), so this fallback is correct without needing a build-time env.
-const baseURL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// Relative by default so one built image works behind any host/domain without
+// a rebuild: nginx (prod) and the Vite dev server (`vite.config.js`'s proxy)
+// both forward /api/* to the backend and strip the prefix. VITE_API_URL is a
+// build-time override for setups that don't front the API this way.
+const baseURL = import.meta.env.VITE_API_URL || "/api";
 
 export const api = axios.create({ baseURL });
+
+// The SPA's own axios calls resolve a relative baseURL fine (the browser
+// resolves it against the current page automatically) -- but anywhere that
+// string gets shown to a human to copy, or baked into a downloaded/deployed
+// agent config for a standalone process to use, it needs to be a real
+// absolute URL: an external process has no "current page" to resolve
+// against. Falls through unchanged if VITE_API_URL was set to an absolute
+// override already.
+export function externalApiUrl() {
+  return /^https?:\/\//i.test(baseURL) ? baseURL : `${window.location.origin}${baseURL}`;
+}
 
 let unauthorizedHandler = null;
 

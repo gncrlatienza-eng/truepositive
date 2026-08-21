@@ -28,3 +28,11 @@ class Report(Base):
     period_end: Mapped[date] = mapped_column(Date)
     data: Mapped[dict] = mapped_column(JSONB, default=dict)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Nullable + SET NULL: same "detach, don't destroy history" pattern as
+    # Log.agent_id -- deleting a user shouldn't delete the reports they
+    # generated, just anonymize the byline.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Set on a real export.csv/export.pdf call for this report -- backs the
+    # Reports page's "Last export" quick stat. Never fabricated: stays NULL
+    # until someone actually exports this specific report.
+    last_exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

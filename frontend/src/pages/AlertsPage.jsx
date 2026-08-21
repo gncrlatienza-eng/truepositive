@@ -218,9 +218,6 @@ export default function AlertsPage() {
         >
           <div
             style={{
-              maxWidth: 1200,
-              width: "100%",
-              margin: "0 auto",
               flex: 1,
               minHeight: 0,
               display: "flex",
@@ -331,7 +328,7 @@ export default function AlertsPage() {
                       <option value="critical">Critical</option>
                       <option value="high">High</option>
                       <option value="medium">Medium</option>
-                      <option value="ok">OK</option>
+                      <option value="ok">Info</option>
                     </Select>
                   </FieldLabel>
                 </div>
@@ -379,7 +376,7 @@ export default function AlertsPage() {
                     padding: theme.space[3],
                     margin: theme.space[4],
                     marginBottom: 0,
-                    background: "rgba(8, 145, 178, 0.08)",
+                    background: "rgba(8, 144, 177, 0.08)",
                     border: `1px solid ${theme.color.accent}`,
                     borderRadius: theme.radius.md,
                     flexShrink: 0,

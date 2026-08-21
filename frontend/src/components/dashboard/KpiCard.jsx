@@ -69,7 +69,7 @@ export function KpiCard({ kpi, onClick }) {
         {KPI_HELP[kpi.key] && <InfoTooltip text={KPI_HELP[kpi.key]} />}
       </span>
       <span
-        style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-0.01em", color: kpi.delta_color || theme.color.text }}
+        style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-0.01em", color: kpi.delta_color || theme.color.text }}
       >
         {kpi.value}
       </span>

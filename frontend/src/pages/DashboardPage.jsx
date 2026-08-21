@@ -10,6 +10,7 @@ import { EventsOverTimeCard } from "../components/dashboard/EventsOverTimeCard";
 import { TopAlertTypesCard } from "../components/dashboard/TopAlertTypesCard";
 import { AlertQueueCard } from "../components/dashboard/AlertQueueCard";
 import { TopSourcesCard } from "../components/dashboard/TopSourcesCard";
+import { PipelineExplainer } from "../components/dashboard/PipelineExplainer";
 import MetricPanel from "../components/dashboard/MetricPanel";
 
 const WINDOWS = [
@@ -178,6 +179,8 @@ export default function DashboardPage() {
               }}
             >
               <StatusBanner banner={summary.banner} onOpenAgents={() => setOpenPanel({ type: "agents" })} />
+
+              <PipelineExplainer />
 
               <CriticalActionStrip
                 criticalCount={Number(summary.kpis.find((k) => k.key === "critical")?.value || 0)}

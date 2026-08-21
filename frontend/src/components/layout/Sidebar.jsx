@@ -96,10 +96,10 @@ export default function Sidebar({ railW, collapsed, criticalCount, onToggleSideb
               justifyContent: collapsed ? "center" : "flex-start",
               borderRadius: 18,
               cursor: "pointer",
-              // No hue on the glass itself or the text/icon on top of it —
-              // colored "glass" reads as tinted plastic, not glass. The
-              // blur/translucency/highlight from .tp-glass *is* the active
-              // cue now; color isn't doing that job anymore.
+              // .tp-glass now resolves to a flat solid pill + hairline
+              // border (index.css) — that's the whole "you're here" cue;
+              // text/icon color stays neutral rather than tinting with the
+              // accent, matching every other flat surface in the app.
               color: isActive ? theme.color.text : theme.color.textMuted,
               transition: "background 150ms ease, box-shadow 150ms ease",
             })}

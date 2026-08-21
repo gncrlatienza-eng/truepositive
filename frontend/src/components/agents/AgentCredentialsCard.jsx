@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
-import { api } from "../../utils/api";
+import { externalApiUrl } from "../../utils/api";
 import { downloadWindowsAgent, downloadWindowsInstaller } from "../../utils/agentDownload";
 
 function formatExpiryBadge(expiresAt) {
@@ -48,7 +48,12 @@ export default function AgentCredentialsCard({ agent, enrollmentKey, platform, e
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
 
-  const installCmd = `python tp_agent.py --url ${api.defaults.baseURL} --id ${agent.id} --key ${enrollmentKey}`;
+  // A real absolute URL, not the SPA's own relative "/api" baseURL -- the
+  // standalone agent process has no page to resolve a relative path against
+  // (confirmed this session: copy-pasting the raw relative baseURL here
+  // produced a Server URL the agent couldn't connect with at all).
+  const serverUrl = externalApiUrl();
+  const installCmd = `python tp_agent.py --url ${serverUrl} --id ${agent.id} --key ${enrollmentKey}`;
 
   async function handleDownloadWindowsAgent() {
     setDownloading(true);
@@ -109,11 +114,11 @@ export default function AgentCredentialsCard({ agent, enrollmentKey, platform, e
         }}
       >
         <span style={{ fontSize: 14, color: theme.color.textMuted }}>Server URL</span>
-        <code style={codeCellStyle}>{api.defaults.baseURL}</code>
+        <code style={codeCellStyle}>{serverUrl}</code>
         <OutlineButton
           type="button"
           style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
-          onClick={() => navigator.clipboard?.writeText(api.defaults.baseURL)}
+          onClick={() => navigator.clipboard?.writeText(serverUrl)}
         >
           Copy
         </OutlineButton>

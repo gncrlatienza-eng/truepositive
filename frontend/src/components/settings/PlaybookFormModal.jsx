@@ -111,7 +111,7 @@ export default function PlaybookFormModal({ open, onClose, onSaved, playbook }) 
         <FieldLabel label="Minimum severity" hint="Optional">
           <Select value={form.min_severity} onChange={(e) => set("min_severity", e.target.value)}>
             <option value="">Any</option>
-            <option value="ok">OK</option>
+            <option value="ok">Info</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
             <option value="critical">Critical</option>

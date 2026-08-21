@@ -1,3 +1,4 @@
+import hashlib
 import json
 import uuid
 from pathlib import Path
@@ -20,6 +21,7 @@ from app.schemas.agents import (
 from app.schemas.log_sources import SourceStatusReportRequest, SourceStatusReportResponse
 from app.schemas.logs import LogIngestRequest, LogIngestResponse
 from app.services import agent_service, log_service, log_source_service
+from app.utils.rate_limit import by_agent_id, rate_limit
 from app.utils.security import get_current_agent, get_current_user, verify_password
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -66,13 +68,20 @@ def _read_agent_binary() -> bytes:
 
 # Raw, unconfigured binary — for anyone assembling a deployment manually
 # (their own agent_config.json alongside it, or scripted provisioning). No
-# auth: this copy is generic, nothing agent- or org-specific is in it.
+# auth: this copy is generic, nothing agent- or org-specific is in it. The
+# binary itself isn't code-signed (a real gap — needs a purchased cert, not
+# a code fix), but the X-SHA256 header at least lets anyone compare against
+# a known-good hash to catch tampering in transit.
 @router.get("/download/windows")
 def download_windows_agent():
+    content = _read_agent_binary()
     return Response(
-        content=_read_agent_binary(),
+        content=content,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": 'attachment; filename="truepositive-agent.exe"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="truepositive-agent.exe"',
+            "X-SHA256": hashlib.sha256(content).hexdigest(),
+        },
     )
 
 
@@ -90,10 +99,14 @@ def download_windows_installer():
             status.HTTP_404_NOT_FOUND,
             "Agent installer not built yet — see agent/README.md for how to build it.",
         )
+    content = binary_path.read_bytes()
     return Response(
-        content=binary_path.read_bytes(),
+        content=content,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": 'attachment; filename="truepositive-agent-setup.exe"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="truepositive-agent-setup.exe"',
+            "X-SHA256": hashlib.sha256(content).hexdigest(),
+        },
     )
 
 
@@ -155,15 +168,25 @@ def rotate_agent_key(
 
 
 # Auth here is the agent's own enrollment key (X-Agent-Key), not a user JWT —
-# these two are called by the agent process, not the dashboard.
-@router.post("/{agent_id}/register", response_model=AgentOut)
+# these two are called by the agent process, not the dashboard. Rate-limited
+# per agent_id (not IP) — the thing worth bounding is "how much can one
+# agent identity do," regardless of which network it connects from.
+@router.post(
+    "/{agent_id}/register",
+    response_model=AgentOut,
+    dependencies=[Depends(rate_limit("agent_register", limit=10, window_seconds=60, key_by=by_agent_id))],
+)
 def register_agent(
     payload: AgentRegisterRequest, agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)
 ):
     return agent_service.register_agent(db, agent, payload)
 
 
-@router.post("/{agent_id}/heartbeat", response_model=HeartbeatResponse)
+@router.post(
+    "/{agent_id}/heartbeat",
+    response_model=HeartbeatResponse,
+    dependencies=[Depends(rate_limit("agent_heartbeat", limit=10, window_seconds=60, key_by=by_agent_id))],
+)
 def heartbeat(agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)):
     return agent_service.heartbeat(db, agent)
 
@@ -177,7 +200,19 @@ def list_agent_sources(agent: Agent = Depends(get_current_agent), db: Session = 
     return [AgentSourceOut.model_validate(s) for s in sources]
 
 
-@router.post("/{agent_id}/logs", response_model=LogIngestResponse)
+# Rate-limited per agent_id: a leaked/guessed agent key previously allowed
+# unlimited fabricated log rows (and the alerts they'd trigger) to be
+# injected into a real org's data with no throttle at all — a real
+# integrity attack on a product whose whole point is being trustworthy
+# evidence. 30/min is well above one agent's real ~30s collection cadence
+# (allows bursts from multiple sources reporting in the same cycle) while
+# still bounding a compromised-key abuse case to a fixed rate instead of
+# "as fast as the network allows."
+@router.post(
+    "/{agent_id}/logs",
+    response_model=LogIngestResponse,
+    dependencies=[Depends(rate_limit("agent_logs", limit=30, window_seconds=60, key_by=by_agent_id))],
+)
 def ingest_agent_logs(
     payload: LogIngestRequest, agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)
 ):

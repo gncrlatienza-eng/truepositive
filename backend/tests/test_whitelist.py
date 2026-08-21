@@ -29,6 +29,28 @@ def test_duplicate_active_409(client, auth_headers):
     assert dup.status_code == 409
 
 
+def test_switching_kind_updates_in_place_instead_of_409(client, auth_headers):
+    # Real bug this guards against: allow an indicator, then decide to block
+    # it (a normal "I changed my mind" action) -- (org_id, type, value) is
+    # unique, so this used to hit the same conflict as a genuine duplicate,
+    # with no way to switch short of deleting the old entry first.
+    allowed = client.post(
+        "/settings/whitelist", json={"type": "ip", "value": "10.0.0.7", "kind": "allow"}, headers=auth_headers
+    )
+    assert allowed.status_code == 201
+    allowed_id = allowed.json()["id"]
+
+    switched = client.post(
+        "/settings/whitelist", json={"type": "ip", "value": "10.0.0.7", "kind": "block"}, headers=auth_headers
+    )
+    assert switched.status_code == 201, switched.text
+    assert switched.json()["kind"] == "block"
+    assert switched.json()["id"] == allowed_id  # same row, updated in place -- not a second entry
+
+    listed = client.get("/settings/whitelist", headers=auth_headers)
+    assert len(listed.json()) == 1
+
+
 def test_invalid_ip_rejected_422(client, auth_headers):
     response = client.post("/settings/whitelist", json={"type": "ip", "value": "not-an-ip"}, headers=auth_headers)
     assert response.status_code == 422

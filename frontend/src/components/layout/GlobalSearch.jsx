@@ -245,12 +245,10 @@ export default function GlobalSearch() {
             width: 360,
             maxHeight: 420,
             overflowY: "auto",
-            background: "rgba(20, 20, 23, 0.78)",
-            backdropFilter: "blur(20px) saturate(180%)",
-            WebkitBackdropFilter: "blur(20px) saturate(180%)",
-            border: "1px solid rgba(255,255,255,0.12)",
+            background: theme.color.raised,
+            border: `1px solid ${theme.color.border}`,
             borderRadius: 8,
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), 0 12px 32px rgba(0, 0, 0, 0.45)",
+            boxShadow: "0 12px 32px rgba(0, 0, 0, 0.45)",
             zIndex: 300,
           }}
         >

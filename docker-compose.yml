@@ -1,16 +1,22 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: truepositive
-      POSTGRES_PASSWORD: truepositive
+      # Dev-only defaults — override POSTGRES_USER/POSTGRES_PASSWORD in .env
+      # before any non-local deployment.
+      POSTGRES_USER: ${POSTGRES_USER:-truepositive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-truepositive}
       POSTGRES_DB: truepositive
     ports:
-      - "5432:5432"
+      # Loopback-only: reachable from host tools (psql/DBeaver) for local
+      # dev, never from the network if this file is ever run on a real host
+      # unchanged. docker-compose.prod.yml drops this port entirely.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U truepositive"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-truepositive}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -19,9 +25,10 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
+    restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://truepositive:truepositive@postgres:5432/truepositive
+      DATABASE_URL: postgresql://${POSTGRES_USER:-truepositive}:${POSTGRES_PASSWORD:-truepositive}@postgres:5432/truepositive
     volumes:
       # Read-only: lets GET /agents/download/windows serve the built binary
       # without baking it into the image (agent/dist/ is a gitignored,
@@ -32,15 +39,34 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   frontend:
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
+      args:
+        # Optional — leave unset in .env to build with the relative "/api"
+        # default (frontend/src/utils/api.js), which works behind nginx's
+        # /api/ proxy in any environment without a rebuild.
+        VITE_API_URL: ${VITE_API_URL:-}
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   postgres_data:

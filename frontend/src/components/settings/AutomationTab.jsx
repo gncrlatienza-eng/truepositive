@@ -152,7 +152,7 @@ export default function AutomationTab() {
             gap: theme.space[3],
             padding: theme.space[3],
             marginBottom: theme.space[4],
-            background: "rgba(8, 145, 178, 0.08)",
+            background: "rgba(8, 144, 177, 0.08)",
             border: `1px solid ${theme.color.accent}`,
             borderRadius: theme.radius.md,
           }}

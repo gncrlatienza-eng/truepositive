@@ -22,6 +22,12 @@ export const LOCAL_SOURCE_CATALOG = [
     description: "Detailed process, network, and file activity. Requires Sysmon to already be installed on the host.",
     recommended: true,
     needsAdmin: true,
+    // A genuinely separate blocker from needsAdmin: even an elevated agent
+    // gets "channel could not be found" if Sysmon itself was never
+    // installed (the common case) -- the "Needs Administrator" badge alone
+    // was misleading here, implying elevation was the only thing standing
+    // between this source and working.
+    requiresSysmon: true,
   },
   {
     key: "windows-powershell",

@@ -143,33 +143,15 @@ function HeroPanel({ steps, headline, doneCount }) {
         boxSizing: "border-box",
       }}
     >
-      {/* Same flat mark as the real logo in TopBar.jsx — scaled up, not
-          reinvented (no gradient/glow), so this reads as the app's actual
-          brand rather than a generic decorative icon. */}
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 11,
-          background: theme.color.accent,
-          color: "#0A0A0C",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginBottom: theme.space[5],
-          fontFamily: theme.font.mono,
-          fontSize: 26,
-          fontWeight: 700,
-          lineHeight: 1,
-        }}
-      >
-        &gt;
-      </div>
+      {/* Same real logo mark as TopBar.jsx — scaled up, not reinvented, so
+          this reads as the app's actual brand rather than a generic
+          decorative icon. */}
+      <img src="/tp-logo.png" alt="" width={48} height={48} style={{ marginBottom: theme.space[5] }} />
 
       <div
         style={{
           fontSize: 12,
-          fontWeight: 700,
+          fontWeight: 600,
           color: theme.color.accent,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
@@ -259,27 +241,14 @@ function LoadingPanel() {
         textAlign: "center",
       }}
     >
-      <div
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 11,
-          background: theme.color.accent,
-          color: "#0A0A0C",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          margin: "0 auto",
-          marginBottom: theme.space[4],
-          fontFamily: theme.font.mono,
-          fontSize: 26,
-          fontWeight: 700,
-          lineHeight: 1,
-        }}
-      >
-        &gt;
-      </div>
-      <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: theme.space[5] }}>
+      <img
+        src="/tp-logo.png"
+        alt=""
+        width={48}
+        height={48}
+        style={{ display: "block", margin: "0 auto", marginBottom: theme.space[4] }}
+      />
+      <div style={{ fontSize: 19, fontWeight: 600, letterSpacing: "-0.01em", marginBottom: theme.space[5] }}>
         <span style={{ color: theme.color.text }}>True</span>
         <span style={{ color: theme.color.accent }}>Positive</span>
       </div>

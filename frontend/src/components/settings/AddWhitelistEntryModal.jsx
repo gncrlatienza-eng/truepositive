@@ -66,11 +66,11 @@ export default function AddWhitelistEntryModal({ open, onClose, onSaved }) {
                 padding: "8px 16px",
                 borderRadius: 999,
                 border: `1px solid ${type === t.id ? theme.color.accent : theme.color.border}`,
-                background: type === t.id ? "rgba(8, 145, 178, 0.1)" : "transparent",
+                background: type === t.id ? "rgba(8, 144, 177, 0.1)" : "transparent",
                 color: theme.color.text,
                 cursor: "pointer",
                 fontSize: 13,
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               {t.label}

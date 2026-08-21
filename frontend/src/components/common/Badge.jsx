@@ -1,14 +1,14 @@
 import { theme } from "../../styles/theme";
-
-const SEVERITY_LABELS = { critical: "Critical", high: "High", medium: "Medium", ok: "OK" };
+import { severityLabel } from "../../utils/severity";
 
 // theme.severity only has 4 tones (critical/high/medium/ok) — matches the
-// backend's Severity enum exactly, no "low"/"info" to invent.
+// backend's Severity enum exactly, no "low"/"info" tone to invent (only the
+// display text is remapped — see utils/severity.js).
 export function SeverityBadge({ severity, className = "", style }) {
   const color = theme.color.severity[severity] || theme.color.textMuted;
   return (
     <Badge color={color} className={className} style={style}>
-      {SEVERITY_LABELS[severity] || severity}
+      {severityLabel(severity)}
     </Badge>
   );
 }

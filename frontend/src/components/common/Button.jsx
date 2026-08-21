@@ -7,14 +7,24 @@ const SIZES = {
 };
 
 const VARIANTS = {
-  // primary/danger stay solid — they're the "this is the action to take"
-  // CTAs, and glass's whole point is translucency, which is the wrong
-  // property for something that needs to visually pop above everything
-  // else. secondary was already transparent-with-a-border, i.e. already
-  // halfway to glass — that's the one that actually becomes real glass.
-  primary: { background: theme.color.accent, color: "#0A0A0C" },
+  // primary is the one variant that needs to visually pop, so it stays a
+  // solid fill — white text, since the accent (#0890b1, the logo's own
+  // teal) isn't light enough for dark text to read cleanly. danger/safe
+  // are tinted+outlined per the flat design spec (a solid red/green fill
+  // read as a warning label, not a button) — border set inline since it
+  // needs to survive regardless of class cascade order.
+  primary: { background: theme.color.accent, color: "#ffffff" },
   secondary: { color: theme.color.text },
-  danger: { background: theme.color.severity.critical, color: "#fff" },
+  danger: {
+    background: theme.color.danger.bg,
+    color: theme.color.danger.text,
+    border: `1px solid ${theme.color.danger.border}`,
+  },
+  safe: {
+    background: theme.color.safe.bg,
+    color: theme.color.safe.text,
+    border: `1px solid ${theme.color.safe.border}`,
+  },
 };
 
 const GLASS_VARIANTS = new Set(["secondary"]);

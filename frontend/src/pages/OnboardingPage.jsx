@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { wz } from "../components/onboarding/onboardingTheme";
 import "../components/onboarding/onboarding.css";
+import AuthModalShell from "../components/auth/AuthModalShell";
 import OnboardingStep1 from "../components/onboarding/OnboardingStep1";
 import OnboardingStep2 from "../components/onboarding/OnboardingStep2";
 import OnboardingStep3 from "../components/onboarding/OnboardingStep3";
@@ -27,6 +28,18 @@ export default function OnboardingPage() {
     setMaxStep((m) => Math.max(m, n));
   }
 
+  // Step 1 (account creation) is the same moment as Login — a modal over
+  // the animated backdrop, not the full wizard chrome. Steps 2-3 need real
+  // room (credentials, install instructions, source pickers) so they stay
+  // the existing full-page sidebar wizard below, unchanged.
+  if (step === 1) {
+    return (
+      <AuthModalShell>
+        <OnboardingStep1 onNext={() => advance(2)} />
+      </AuthModalShell>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: wz.bg, color: wz.textPrimary, fontFamily: wz.font.sans }}>
       <div
@@ -43,7 +56,7 @@ export default function OnboardingPage() {
           padding: "0 24px",
         }}
       >
-        <div style={{ fontSize: 21, fontWeight: 700, fontFamily: wz.font.sans, letterSpacing: "-0.01em" }}>
+        <div style={{ fontSize: 21, fontWeight: 600, fontFamily: wz.font.sans, letterSpacing: "-0.01em" }}>
           <span style={{ color: wz.textPrimary }}>True</span>
           <span style={{ color: wz.accent }}>Positive</span>
         </div>
@@ -116,7 +129,7 @@ export default function OnboardingPage() {
                       justifyContent: "center",
                       fontSize: 15,
                       fontFamily: wz.font.mono,
-                      fontWeight: 700,
+                      fontWeight: 600,
                       flexShrink: 0,
                       background: active ? wz.accent : reachable ? "#3a4557" : wz.textMuted,
                       color: active ? wz.onAccentLight : reachable ? wz.textSecondary : wz.sidebarBg,
@@ -155,7 +168,6 @@ export default function OnboardingPage() {
           style={{ flex: 1, background: wz.bg, overflow: "auto", padding: "40px 60px" }}
         >
           <div style={{ maxWidth: 800 }}>
-            {step === 1 && <OnboardingStep1 onNext={() => advance(2)} />}
             {step === 2 && (
               <OnboardingStep2
                 onBack={() => goTo(1)}

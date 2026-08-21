@@ -150,7 +150,7 @@ export default function SourceDetailModal({ open, onClose, source, agents }) {
           <StatusIcon kind={iconKind} color={statusColor} />
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: statusColor, marginBottom: 2 }}>{health.label}</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: statusColor, marginBottom: 2 }}>{health.label}</div>
           <div style={{ fontSize: 13, color: theme.color.textMuted, lineHeight: 1.5 }}>{health.reason}</div>
         </div>
       </div>

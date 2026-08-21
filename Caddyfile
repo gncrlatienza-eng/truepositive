@@ -1,0 +1,32 @@
+# Real reverse-proxy config for docker-compose.prod.yml's `caddy` service.
+# Caddy automatically obtains and renews a Let's Encrypt certificate for
+# {$DOMAIN} the first time it starts — this REQUIRES:
+#   1. DOMAIN in .env set to a real domain name.
+#   2. That domain's DNS A/AAAA record already pointing at this host's public IP.
+#   3. Ports 80 and 443 reachable from the internet (80 for the ACME HTTP-01
+#      challenge, 443 for the issued cert) — a NAT/firewall blocking either
+#      will make Caddy fail to obtain a cert.
+# None of that exists in a local dev environment, so this file is untested
+# end-to-end here — validated statically instead (`caddy validate`, see the
+# deployment section of README.md). The config itself is standard, correct
+# Caddy syntax and will work once the three prerequisites above are met.
+
+{$DOMAIN} {
+	# Same intent as docker/nginx.conf's /api/ proxy_pass: forward API calls
+	# to the backend and strip the /api prefix so backend routes (e.g.
+	# /reports/generate) don't need to know about it.
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+	}
+}

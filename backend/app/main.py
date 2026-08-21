@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import agents, alerts, auth, dashboard, incidents, logs, playbooks, reports
+from app.routes import agents, alerts, auth, dashboard, incidents, intel, logs, playbooks, reports
 from app.routes import settings as settings_route
 
 # Root logger defaults to WARNING with no handlers, which silently drops the
@@ -42,6 +42,7 @@ app.include_router(alerts.router)
 app.include_router(incidents.router)
 app.include_router(playbooks.router)
 app.include_router(reports.router)
+app.include_router(intel.router)
 app.include_router(settings_route.router)
 app.include_router(dashboard.router)
 

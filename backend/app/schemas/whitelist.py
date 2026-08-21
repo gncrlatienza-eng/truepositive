@@ -16,6 +16,7 @@ class WhitelistEntryCreate(BaseModel):
     value: str = Field(min_length=1, max_length=255)
     reason: str | None = Field(default=None, max_length=2000)
     expires_at: datetime | None = None
+    kind: str = Field(default="allow", pattern="^(allow|block)$")
 
     @model_validator(mode="after")
     def validate_value(self) -> "WhitelistEntryCreate":
@@ -40,6 +41,7 @@ class WhitelistEntryOut(BaseModel):
     value: str
     reason: str | None
     expires_at: datetime | None
+    kind: str  # "allow" | "block"
     is_active: bool
     created_by: uuid.UUID
     created_by_email: str
@@ -53,6 +55,7 @@ class WhitelistEntryOut(BaseModel):
             value=entry.value,
             reason=entry.reason,
             expires_at=entry.expires_at,
+            kind=entry.kind,
             is_active=entry.expires_at is None or entry.expires_at > datetime.now(UTC),
             created_by=entry.created_by,
             created_by_email=created_by_email,

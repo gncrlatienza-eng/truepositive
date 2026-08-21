@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database.session import Base, get_db
 from app.main import app
+from app.utils.rate_limit import reset as reset_rate_limits
 
 engine = create_engine(settings.database_url, pool_pre_ping=True)
 
@@ -49,6 +50,10 @@ def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = _get_db_override
+    # Rate limiting is process-global state, not per-request DB state — reset
+    # it alongside the db_session's own isolation so one test's request
+    # volume never trips a limit for the next test.
+    reset_rate_limits()
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

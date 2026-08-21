@@ -175,9 +175,6 @@ export default function LogsPage() {
         >
           <div
             style={{
-              maxWidth: 1200,
-              width: "100%",
-              margin: "0 auto",
               flex: 1,
               minHeight: 0,
               display: "flex",
@@ -272,7 +269,7 @@ export default function LogsPage() {
                       <option value="critical">Critical</option>
                       <option value="high">High</option>
                       <option value="medium">Medium</option>
-                      <option value="ok">OK</option>
+                      <option value="ok">Info</option>
                     </Select>
                   </FieldLabel>
                 </div>

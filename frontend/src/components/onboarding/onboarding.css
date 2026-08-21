@@ -5,18 +5,13 @@
   width: 100%;
   box-sizing: border-box;
   background: transparent;
-  border: 1px solid #242429;
+  border: 1px solid #30363d;
   border-radius: 999px;
   height: 54px;
-  font-family:
-    "Inter",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
-  font-weight: 500;
-  color: #e5e7eb;
+  font-weight: 400;
+  color: #e6edf3;
   outline: none;
   transition:
     border-color 150ms ease,
@@ -39,7 +34,7 @@
   padding: 14px 44px 14px 24px;
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%238b8b8b'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%238b949e'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 20px center;
   background-size: 16px;
@@ -47,12 +42,12 @@
 }
 
 .tp-wizard-select option {
-  background: #141417;
-  color: #d4d4d8;
+  background: #161b22;
+  color: #8b949e;
 }
 
 .tp-wizard-input::placeholder {
-  color: #57585f;
+  color: #484f58;
 }
 
 .tp-wizard-select {
@@ -60,23 +55,18 @@
 }
 
 .tp-wizard-select option {
-  font-family:
-    "Inter",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .tp-wizard-input:hover,
 .tp-wizard-select:hover {
-  border-color: #3d3d44;
+  border-color: #484f58;
 }
 
 .tp-wizard-input:focus,
 .tp-wizard-select:focus {
-  border-color: #06b6d4;
-  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18);
+  border-color: #0890b1;
+  box-shadow: 0 0 0 3px rgba(8, 144, 177, 0.18);
 }
 
 .tp-wizard-checkbox {
@@ -85,9 +75,9 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  border: 1px solid #35353c;
+  border: 1px solid #30363d;
   border-radius: 4px;
-  background: #0a0a0c;
+  background: #21262d;
   cursor: pointer;
   position: relative;
   transition:
@@ -96,8 +86,8 @@
 }
 
 .tp-wizard-checkbox:checked {
-  background: #06b6d4;
-  border-color: #06b6d4;
+  background: #0890b1;
+  border-color: #0890b1;
 }
 
 .tp-wizard-checkbox:checked::after {
@@ -107,7 +97,7 @@
   top: 2px;
   width: 6px;
   height: 10px;
-  border: solid #f0fdf4;
+  border: solid #ffffff;
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -122,14 +112,9 @@
   padding: 14px 24px;
   border: none;
   border-radius: 999px;
-  background: #06b6d4;
-  color: #0a0a0c;
-  font-family:
-    "Inter",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  background: #0890b1;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 17px;
   font-weight: 600;
   cursor: pointer;
@@ -139,9 +124,9 @@
 }
 
 .tp-wizard-btn-primary:hover:not(:disabled) {
-  background: #0891b2;
+  background: #0ab0d8;
   /* Neutral spotlight, not a colored glow — see index.css's .tp-card:hover
-     for the same 2026-08-16 change and why. */
+     for the same change and why. */
   box-shadow: 0 4px 16px rgba(255, 255, 255, 0.1);
 }
 
@@ -153,8 +138,8 @@
 .tp-wizard-spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(10, 10, 12, 0.35);
-  border-top-color: #0a0a0c;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
   border-radius: 50%;
   animation: tp-wizard-spin 0.6s linear infinite;
 }
@@ -173,25 +158,25 @@
   border-left: 4px solid transparent;
   cursor: pointer;
   transition: background-color 150ms ease;
-  background: #141417;
+  background: #161b22;
 }
 
 .tp-wizard-sidebar-step:hover {
-  background: #1b1b1f;
+  background: #1c2128;
 }
 
 .tp-wizard-sidebar-step.active {
-  background: #1b1b1f;
-  border-left-color: #06b6d4;
-  box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.04);
+  background: #1c2128;
+  border-left-color: #0890b1;
+  box-shadow: none;
 }
 
 .tp-wizard-exit:hover {
-  color: #d4d4d8;
+  color: #e6edf3;
 }
 
 .tp-wizard-terms-link {
-  color: #06b6d4;
+  color: #0890b1;
   text-decoration: none;
   cursor: pointer;
 }

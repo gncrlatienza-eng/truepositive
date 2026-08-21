@@ -1,8 +1,8 @@
 import { theme } from "../../styles/theme";
 import { useDelayedHover } from "../../hooks/useDelayedHover";
 
-// Shared card chrome — dedupes the #1A1E2E/border/radius:8px block repeated
-// across every dashboard panel and settings list in the mockup.
+// Shared card chrome — dedupes the flat background/border/radius:8px block
+// repeated across every dashboard panel and settings list in the mockup.
 export function Card({ title, action, children, className = "", style, bodyStyle }) {
   const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
   return (

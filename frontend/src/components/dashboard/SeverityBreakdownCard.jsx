@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { theme } from "../../styles/theme";
 import { Card } from "../common/Card";
 import { DonutChart } from "../charts/DonutChart";
+import { severityLabel } from "../../utils/severity";
 
 // A small pulsing dot in the card header — visible proof this chart is on
 // the same 30s live-refresh cycle as the KPI row above it, not a one-time
@@ -31,10 +32,13 @@ function LiveDot() {
 // total in the center — so this card is just the donut plus a minimal
 // clickable color key, not a chart plus a redundant second breakdown.
 export function SeverityBreakdownCard({ bars, onSelect }) {
+  // Display label is remapped client-side rather than trusting the
+  // backend's own `label` field — keeps the "ok" → "Info" fix purely a
+  // presentation concern instead of a backend/API change.
   const segments = bars.map((b) => ({
     value: b.count,
     color: theme.color.severity[b.severity],
-    label: b.label,
+    label: severityLabel(b.severity),
     key: b.severity,
   }));
 

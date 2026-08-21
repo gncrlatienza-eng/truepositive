@@ -2,38 +2,60 @@
 // (gitignored — not part of this repo). Match new screens against that
 // mockup's inline styles rather than inventing new values here.
 
-// 2026-08-16: rebased off a neutral near-black (was a navy-tinted
-// #0F1219/#1A1E2E, R<G<B on every dark token — that blue lean plus the
-// exact-Tailwind-cyan-600 accent is what read as generic/"AI-dashboard"
-// rather than an intentional dark theme). Backgrounds/borders/text are now
-// truly neutral gray; accent is unchanged (explicit call — cyan stays,
-// keeps every `rgba(8, 145, 178, …)` accent-tint literal elsewhere in the
-// app valid without touching each one). Severity ramp fixed for real: the
-// old high/medium (`#a16207` muddy olive, `#6D28D9` violet) broke the
-// intuitive red→orange→amber→green danger gradient — violet doesn't read
-// as "between" red and green. New steps are the dataviz skill's own
-// pre-validated status palette (good/warning/serious/critical), which
-// clears ≥3:1 contrast on a dark surface even lighter than this one.
+// 2026-08-17: full flat-design rebase (Reports/Intel revamp, applied
+// app-wide per explicit user decision). Prior sessions spent many rounds
+// chasing "looks AI" via a cyan-on-near-black "liquid glass" treatment —
+// the user's own diagnosis this round was more specific: flat GitHub-dark
+// palette (#0d1117/#161b22/#30363d), zero backdrop-filter/blur anywhere,
+// and a locked two-weight font system. `raised` is a new token: one value
+// shared by card-hover surfaces and modal/elevated panels, matching the
+// mockup's own reuse of #1c2128 for both. Severity ramp realigned to the
+// same mockup's reputation-gauge score bands (ok/medium/high/critical =
+// green/amber/orange/red) so the whole app reads as one consistent ramp
+// instead of two different ones.
+//
+// 2026-08-18: accent recolored from the interim GitHub-blue (#1f6feb) to
+// the real brand mark's own teal — sampled directly from the "P" in
+// reference/tp_logo.png (RGB 8,144,177 = #0890b1), the exact same source
+// the logo/favicon assets were generated from, so the accent and the logo
+// are provably the same color rather than a hand-matched guess.
 export const theme = {
   color: {
-    background: "#0A0A0C",
-    surface: "#141417",
-    border: "#242429",
-    accent: "#0891b2",
-    accentHover: "#067a94",
-    text: "#EDEDEF",
-    textMuted: "#9B9CA4",
-    textFaint: "#57585F",
+    background: "#0d1117",
+    surface: "#161b22",
+    raised: "#1c2128",
+    input: "#21262d",
+    border: "#30363d",
+    borderStrong: "#484f58",
+    accent: "#0890b1",
+    accentHover: "#0ab0d8",
+    text: "#e6edf3",
+    textMuted: "#8b949e",
+    textFaint: "#484f58",
     severity: {
-      critical: "#d03b3b",
-      high: "#ec835a",
-      medium: "#fab219",
-      ok: "#0ca30c",
+      critical: "#f85149",
+      high: "#f0883e",
+      medium: "#d29922",
+      ok: "#3fb950",
+    },
+    safe: {
+      bg: "rgba(63, 185, 80, 0.1)",
+      border: "rgba(63, 185, 80, 0.4)",
+      text: "#3fb950",
+    },
+    danger: {
+      bg: "rgba(248, 81, 73, 0.1)",
+      border: "rgba(248, 81, 73, 0.4)",
+      text: "#f85149",
     },
   },
   font: {
-    body: "'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', 'Segoe UI', Helvetica, Arial, sans-serif",
+    body: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     mono: "'JetBrains Mono', 'SF Mono', ui-monospace, SFMono-Regular, 'Menlo', 'Consolas', monospace",
+    weight: {
+      regular: 400,
+      semibold: 600,
+    },
   },
   radius: {
     sm: "6px",

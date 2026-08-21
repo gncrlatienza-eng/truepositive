@@ -1,0 +1,60 @@
+####
+# Production overlay — run together with the base file, never alone:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What this changes vs. the dev defaults:
+#   - Postgres: no host port at all (only reachable from other containers on
+#     the internal Compose network — see the security audit that flagged
+#     0.0.0.0:5432 with default creds as a critical real-deployment risk).
+#   - Postgres/JWT/credential-encryption secrets are REQUIRED — compose
+#     refuses to start rather than silently running with dev defaults.
+#   - Adds `caddy`, terminating real HTTPS (Let's Encrypt) in front of
+#     frontend/backend. Requires DOMAIN (a real domain whose DNS already
+#     points at this host) and ports 80/443 reachable from the internet for
+#     the ACME challenge — see Caddyfile for details. This can't be
+#     exercised end-to-end in a local dev environment with no public domain;
+#     the config itself is real and correct, verified via `caddy validate`.
+####
+services:
+  postgres:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a real POSTGRES_PASSWORD in .env before deploying — no dev default in prod}
+
+  backend:
+    # No host port published — only Caddy (and other containers on the
+    # internal network) can reach it. Dev's 8000:8000 mapping is dropped.
+    ports: !reset []
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-truepositive}:${POSTGRES_PASSWORD:?Set a real POSTGRES_PASSWORD in .env before deploying}@postgres:5432/truepositive
+      JWT_SECRET: ${JWT_SECRET:?Set a real JWT_SECRET in .env before deploying — no dev default in prod}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?Set a real CREDENTIAL_ENCRYPTION_KEY in .env before deploying}
+      # Browser requests normally stay same-origin under DOMAIN via Caddy, so
+      # this mostly matters for direct (non-proxied) API consumers.
+      CORS_ORIGINS: https://${DOMAIN:?Set DOMAIN to a real domain whose DNS points at this host before deploying}
+
+  frontend:
+    # No host port published — only Caddy can reach it.
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN to a real domain whose DNS points at this host before deploying}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

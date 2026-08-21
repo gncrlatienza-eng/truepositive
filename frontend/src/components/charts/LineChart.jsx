@@ -1,6 +1,7 @@
 import { Line } from "react-chartjs-2";
 import { theme } from "../../styles/theme";
 import { crosshairPlugin, externalTooltipHandler } from "./chartSetup";
+import { formatLocalHour } from "../../utils/time";
 
 // Canvas gradients are a Chart.js "scriptable option" — a function re-run
 // whenever the chart (re)draws, since a gradient object is tied to a
@@ -19,10 +20,16 @@ function buildAreaGradient(color) {
   };
 }
 
+// Falls back to hour_label only for older cached data shaped without
+// bucket_start.
+function pointLabel(p) {
+  return formatLocalHour(p?.bucket_start) ?? p?.hour_label ?? "";
+}
+
 // Chart.js line — shared primitive behind both Sparkline (compact, KPI
 // cards) and HourBars (larger, drill-down panels). `points`: [{ hour_label,
-// count }] (the backend's HourBar shape, reused verbatim — no separate
-// chart-data schema).
+// bucket_start, count }] (the backend's HourBar shape, reused verbatim — no
+// separate chart-data schema).
 export function LineChart({
   points,
   color = theme.color.accent,
@@ -45,7 +52,7 @@ export function LineChart({
   const mid = Math.round(max / 2);
 
   const data = {
-    labels: points.map((p) => p.hour_label),
+    labels: points.map(pointLabel),
     datasets: [
       {
         data: points.map((p) => p.count),
@@ -81,12 +88,12 @@ export function LineChart({
           // version — the axis, not every bucket, carries the time range.
           callback: (_val, index, ticks) => {
             if (!showAllTicks) {
-              return index === 0 || index === ticks.length - 1 ? (points[index]?.hour_label ?? "") : "";
+              return index === 0 || index === ticks.length - 1 ? pointLabel(points[index]) : "";
             }
             // Dense ticks for large charts: every 4th bucket for 24h (24 points),
             // every 2nd for 7d, every label for 30d or sparse data.
             const step = points.length > 20 ? 4 : points.length > 7 ? 2 : 1;
-            return index % step === 0 ? (points[index]?.hour_label ?? "") : "";
+            return index % step === 0 ? pointLabel(points[index]) : "";
           },
         },
       },

@@ -161,11 +161,11 @@ export default function ConnectSourceModal({ open, onClose, onSaved, agents, sou
                 padding: "10px 16px",
                 borderRadius: 999,
                 border: `1px solid ${form.mode === m ? theme.color.accent : theme.color.border}`,
-                background: form.mode === m ? "rgba(8, 145, 178, 0.1)" : "transparent",
+                background: form.mode === m ? "rgba(8, 144, 177, 0.1)" : "transparent",
                 color: theme.color.text,
                 cursor: isEdit ? "default" : "pointer",
                 fontSize: 14,
-                fontWeight: 500,
+                fontWeight: 600,
               }}
             >
               {m === "local" ? "Local" : "Remote"}

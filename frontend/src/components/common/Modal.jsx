@@ -38,12 +38,8 @@ export default function Modal({ open, onClose, title, children, footer, width = 
           maxWidth: width,
           maxHeight: "90vh",
           overflowY: "auto",
-          // .tp-glass supplies the frosted background/border/highlight —
-          // this needs its own solid-ish backing tint underneath that so
-          // dense form content (most of what lives in a modal) stays fully
-          // legible rather than reading whatever's scrolling behind it too
-          // strongly; .tp-glass's own translucent layer sits on top of this.
-          backgroundColor: "rgba(20, 20, 23, 0.55)",
+          // .tp-glass now resolves to a flat, fully opaque surface (see
+          // index.css) — no separate backing tint needed underneath it.
           borderRadius: theme.radius.lg,
           padding: theme.space[6],
         }}

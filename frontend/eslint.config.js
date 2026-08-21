@@ -26,6 +26,7 @@ export default [
         setInterval: "readonly",
         clearInterval: "readonly",
         ResizeObserver: "readonly",
+        Blob: "readonly",
       },
     },
     settings: { react: { version: "detect" } },

@@ -14,18 +14,45 @@ from app.schemas.whitelist import WhitelistEntryCreate
 def create_entry(
     db: Session, org_id: uuid.UUID, created_by: uuid.UUID, payload: WhitelistEntryCreate
 ) -> WhitelistEntry:
+    # (org_id, type, value) is unique at the DB level -- an indicator can't
+    # be simultaneously "allow" and "block". A genuine duplicate (same kind
+    # re-submitted) should still 409 -- that's real, intentional duplicate
+    # prevention (see test_duplicate_active_409). But *switching* kind (allow
+    # an IP, then decide to block that same IP -- a completely normal
+    # "I changed my mind" action) was hitting that same 409 with no way to
+    # recover short of manually deleting the old entry first. Only the
+    # kind-differs case is special-cased as an update-in-place; same-kind
+    # duplicates still fall through to the conflict below.
+    existing = db.scalar(
+        select(WhitelistEntry).where(
+            WhitelistEntry.org_id == org_id,
+            WhitelistEntry.type == payload.type,
+            WhitelistEntry.value == payload.value,
+        )
+    )
+    if existing is not None and existing.kind != payload.kind:
+        existing.kind = payload.kind
+        existing.reason = payload.reason
+        existing.expires_at = payload.expires_at
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     entry = WhitelistEntry(
         org_id=org_id,
         type=payload.type,
         value=payload.value,
         reason=payload.reason,
         expires_at=payload.expires_at,
+        kind=payload.kind,
         created_by=created_by,
     )
     db.add(entry)
     try:
         db.commit()
     except IntegrityError as exc:
+        # A concurrent request created the row between the check above and
+        # this insert -- genuinely rare, real safety net, not the common path.
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "This value is already whitelisted for your org") from exc
     db.refresh(entry)

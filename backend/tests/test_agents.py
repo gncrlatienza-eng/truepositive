@@ -346,3 +346,97 @@ def test_download_windows_installer_serves_binary_when_built(client, monkeypatch
     assert response.status_code == 200
     assert response.content == b"fake-installer-bytes"
     assert response.headers["content-disposition"] == 'attachment; filename="truepositive-agent-setup.exe"'
+
+
+def test_download_windows_installer_includes_sha256(client, monkeypatch, tmp_path):
+    import hashlib
+
+    monkeypatch.setattr(agents_routes, "AGENT_BINARY_DIR", tmp_path)
+    content = b"fake-installer-bytes"
+    (tmp_path / "truepositive-agent-setup.exe").write_bytes(content)
+
+    response = client.get("/agents/download/windows-installer")
+    assert response.headers["x-sha256"] == hashlib.sha256(content).hexdigest()
+
+
+def test_download_windows_raw_binary_includes_sha256(client, monkeypatch, tmp_path):
+    import hashlib
+
+    monkeypatch.setattr(agents_routes, "AGENT_BINARY_DIR", tmp_path)
+    content = b"fake-agent-bytes"
+    (tmp_path / "truepositive-agent.exe").write_bytes(content)
+
+    response = client.get("/agents/download/windows")
+    assert response.status_code == 200
+    assert response.headers["x-sha256"] == hashlib.sha256(content).hexdigest()
+
+
+# ── Rate limiting ────────────────────────────────────────────────────────────
+# A leaked/guessed agent key previously allowed unlimited fake log/register/
+# heartbeat traffic against a real org with no throttle at all.
+
+
+def test_register_rate_limited_after_threshold(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    for _ in range(10):
+        r = client.post(f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": key})
+        assert r.status_code == 200, r.text
+    over = client.post(f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": key})
+    assert over.status_code == 429
+    assert "retry-after" in over.headers
+
+
+def test_ingest_logs_rate_limited_after_threshold(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    client.post(f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": key})
+    source = client.post(
+        "/logs/sources",
+        json={"name": "s", "type": "local", "agent_id": agent_id, "path": "Security"},
+        headers=auth_headers,
+    ).json()
+    payload = {
+        "logs": [
+            {
+                "source_id": source["id"],
+                "timestamp": datetime.now(UTC).isoformat(),
+                "severity": "ok",
+                "event_type": "test",
+                "message": "m",
+                "raw": {},
+            }
+        ]
+    }
+    for _ in range(30):
+        r = client.post(f"/agents/{agent_id}/logs", json=payload, headers={"X-Agent-Key": key})
+        assert r.status_code == 200, r.text
+    over = client.post(f"/agents/{agent_id}/logs", json=payload, headers={"X-Agent-Key": key})
+    assert over.status_code == 429
+
+
+def test_heartbeat_rate_limited_after_threshold(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    client.post(f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": key})
+    for _ in range(10):
+        r = client.post(f"/agents/{agent_id}/heartbeat", headers={"X-Agent-Key": key})
+        assert r.status_code == 200, r.text
+    over = client.post(f"/agents/{agent_id}/heartbeat", headers={"X-Agent-Key": key})
+    assert over.status_code == 429
+
+
+def test_agent_rate_limit_scoped_per_agent_not_shared(client, auth_headers):
+    # A second agent must not inherit the first agent's exhausted budget --
+    # the limiter must key on agent identity, not the shared test client IP.
+    first = _create_agent(client, auth_headers, name="dc-01")
+    second = _create_agent(client, auth_headers, name="dc-02")
+    first_id, first_key = first["agent"]["id"], first["enrollment_key"]
+    second_id, second_key = second["agent"]["id"], second["enrollment_key"]
+
+    for _ in range(10):
+        r = client.post(f"/agents/{first_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": first_key})
+        assert r.status_code == 200
+
+    still_ok = client.post(f"/agents/{second_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": second_key})
+    assert still_ok.status_code == 200

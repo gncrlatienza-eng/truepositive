@@ -1,6 +1,12 @@
-from unittest.mock import patch
+import io
+import urllib.error
+from unittest.mock import call, patch
 
 import tp_agent
+
+
+def _make_http_error(code, body=b"detail"):
+    return urllib.error.HTTPError("http://x", code, "msg", None, io.BytesIO(body))
 
 
 def _fake_result(returncode, stdout="", stderr=""):
@@ -68,11 +74,100 @@ def test_validate_connect_fields_trims_and_normalizes():
     assert result == {"url": "http://localhost:8000", "id": "agent-1", "key": "key-1"}
 
 
-def test_run_silent_gives_up_cleanly_after_retries_exhausted():
-    # A fresh-login network race (Wi-Fi not up yet) shouldn't hang or crash
-    # the silent auto-start relaunch — it should retry a few times, then
-    # just return so the process exits quietly and the next login tries
-    # again, rather than raising or looping forever.
+def test_register_with_retry_succeeds_after_transient_failures():
+    calls = []
+
+    def fake_post(_url, _key, _body):
+        calls.append(1)
+        if len(calls) < 3:
+            raise tp_agent.AgentRequestError("connection refused")
+        return {"status": "connected", "hostname": "h"}
+
+    retries = []
+    with (
+        patch("tp_agent._post", side_effect=fake_post),
+        patch("tp_agent.time.sleep") as mock_sleep,
+    ):
+        result = tp_agent._register_with_retry(
+            "http://x",
+            "agent-1",
+            "key-1",
+            "host",
+            on_retry=lambda attempt, delay, exc: retries.append((attempt, delay)),
+        )
+
+    assert result == {"status": "connected", "hostname": "h"}
+    assert len(calls) == 3
+    assert retries == [(1, 5), (2, 10)]
+    assert mock_sleep.call_args_list == [call(5), call(10)]
+
+
+def test_register_with_retry_fails_fast_on_401():
+    # A wrong/stale key will never fix itself by waiting -- retrying it is
+    # pointless, so this must raise immediately without consuming any of
+    # the retry budget.
+    calls = []
+    retries = []
+
+    def fake_post(_url, _key, _body):
+        calls.append(1)
+        raise tp_agent.AgentRequestError("nope", status_code=401)
+
+    with (
+        patch("tp_agent._post", side_effect=fake_post),
+        patch("tp_agent.time.sleep") as mock_sleep,
+    ):
+        try:
+            tp_agent._register_with_retry(
+                "http://x", "agent-1", "key-1", "host", on_retry=lambda *a: retries.append(a)
+            )
+            raise AssertionError("expected AgentCredentialsError")
+        except tp_agent.AgentCredentialsError:
+            pass
+
+    assert len(calls) == 1
+    assert retries == []
+    mock_sleep.assert_not_called()
+
+
+def test_register_with_retry_gives_up_after_bounded_window():
+    def fake_post(_url, _key, _body):
+        raise tp_agent.AgentRequestError("connection refused")
+
+    with (
+        patch("tp_agent._post", side_effect=fake_post),
+        patch("tp_agent.time.sleep"),
+        patch("tp_agent.time.monotonic", side_effect=[0, 100, 200, 301]),
+    ):
+        result = tp_agent._register_with_retry("http://x", "agent-1", "key-1", "host")
+
+    assert result is None
+
+
+def test_register_with_retry_stop_event_interrupts_wait():
+    class _ImmediateStop:
+        def is_set(self):
+            return False
+
+        def wait(self, _delay):
+            return True  # simulate Exit clicked mid-wait
+
+    def fake_post(_url, _key, _body):
+        raise tp_agent.AgentRequestError("connection refused")
+
+    with patch("tp_agent._post", side_effect=fake_post):
+        result = tp_agent._register_with_retry(
+            "http://x", "agent-1", "key-1", "host", stop_event=_ImmediateStop()
+        )
+
+    assert result is None
+
+
+def test_run_silent_gives_up_after_bounded_window():
+    # A Docker cold-start after a reboot can take well over a minute --
+    # this should retry with backoff for a real window (not a fixed small
+    # count), then return so the process exits quietly and the next login
+    # tries again, rather than raising or looping forever.
     calls = []
 
     def fake_post(_url, _key, _body):
@@ -82,12 +177,33 @@ def test_run_silent_gives_up_cleanly_after_retries_exhausted():
     with (
         patch("tp_agent._post", side_effect=fake_post),
         patch("tp_agent._write_status"),
+        patch("tp_agent.time.sleep"),
+        patch("tp_agent.time.monotonic", side_effect=[0, 100, 200, 301]),
+    ):
+        tp_agent.run_silent("http://x", "agent-1", "key-1")
+
+    assert len(calls) == 3
+
+
+def test_run_silent_credentials_rejected_stops_immediately():
+    calls = []
+    written = []
+
+    def fake_post(_url, _key, _body):
+        calls.append(1)
+        raise tp_agent.AgentRequestError("bad key", status_code=401)
+
+    with (
+        patch("tp_agent._post", side_effect=fake_post),
+        patch("tp_agent._write_status", side_effect=lambda *a: written.append(a)),
         patch("tp_agent.time.sleep") as mock_sleep,
     ):
         tp_agent.run_silent("http://x", "agent-1", "key-1")
 
-    assert len(calls) == tp_agent.REGISTER_RETRY_ATTEMPTS
-    assert mock_sleep.call_count == tp_agent.REGISTER_RETRY_ATTEMPTS - 1
+    assert len(calls) == 1
+    mock_sleep.assert_not_called()
+    assert len(written) == 1
+    assert written[0][0] == "Connection failed"
 
 
 class _StopLoop(Exception):
@@ -170,3 +286,37 @@ def test_format_already_running_message_handles_no_status_recorded_yet():
     message = tp_agent._format_already_running_message(None)
     assert "already running" in message
     assert "still be starting up" in message
+
+
+def test_http_error_message_401_is_actionable_and_distinct():
+    exc = _make_http_error(401, b'{"detail":"Not authenticated"}')
+    message = tp_agent._http_error_message("http://x/agents/1/register", exc)
+    assert "Credentials rejected" in message
+    assert "Settings" in message
+    assert "will not resolve on its own" in message
+
+
+def test_http_error_message_non_401_is_generic():
+    exc = _make_http_error(500, b"boom")
+    message = tp_agent._http_error_message("http://x/agents/1/heartbeat", exc)
+    assert "Credentials rejected" not in message
+    assert "failed (500)" in message
+
+
+def test_post_sets_status_code_on_http_error():
+    with patch("tp_agent.urllib.request.urlopen", side_effect=_make_http_error(401)):
+        try:
+            tp_agent._post("http://x", "key", {})
+            raise AssertionError("expected AgentRequestError")
+        except tp_agent.AgentRequestError as exc:
+            assert exc.status_code == 401
+
+
+def test_post_url_error_has_no_status_code():
+    with patch("tp_agent.urllib.request.urlopen", side_effect=urllib.error.URLError("refused")):
+        try:
+            tp_agent._post("http://x", "key", {})
+            raise AssertionError("expected AgentRequestError")
+        except tp_agent.AgentRequestError as exc:
+            assert exc.status_code is None
+            assert "Could not reach" in str(exc)

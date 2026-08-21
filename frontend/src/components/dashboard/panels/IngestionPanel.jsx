@@ -1,5 +1,6 @@
 import { HourBars } from "../../charts/HourBars";
 import { Section, Stat } from "./PanelPrimitives";
+import { formatLocalHour } from "../../../utils/time";
 
 export default function IngestionPanel({ data }) {
   return (
@@ -8,7 +9,11 @@ export default function IngestionPanel({ data }) {
         <HourBars bars={data.hourly} />
       </Section>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Stat label="Peak hour" value={data.peak_hour_label || "—"} sub={`${data.peak_count} events`} />
+        <Stat
+          label="Peak hour"
+          value={formatLocalHour(data.peak_hour_start) ?? data.peak_hour_label ?? "—"}
+          sub={`${data.peak_count} events`}
+        />
         <Stat label="Avg/hour" value={data.avg_per_hour} />
         <Stat label="Today total" value={data.today_total} />
         <Stat label="vs previous" value={data.delta_vs_previous_pct != null ? `${data.delta_vs_previous_pct}%` : "—"} />

@@ -45,7 +45,13 @@ class SourceRow(BaseModel):
 
 
 class HourBar(BaseModel):
+    # hour_label is UTC-formatted and kept only for non-JS consumers (e.g. a
+    # future CSV export) — the frontend renders bucket_start in the viewer's
+    # own local time instead of trusting this string, since a bare "14:00"
+    # has no timezone attached and would otherwise silently display as
+    # whatever timezone the backend host happens to run in.
     hour_label: str
+    bucket_start: datetime
     count: int
 
 
@@ -69,6 +75,7 @@ class StatusBanner(BaseModel):
 
 class IngestSummary(BaseModel):
     peak_hour_label: str | None
+    peak_hour_start: datetime | None
     peak_count: int
     avg_per_hour: float
     today_total: int
@@ -99,6 +106,7 @@ class IngestionPanel(BaseModel):
     window: str
     hourly: list[HourBar]
     peak_hour_label: str | None
+    peak_hour_start: datetime | None
     peak_count: int
     avg_per_hour: float
     today_total: int

@@ -1,0 +1,46 @@
+<!--
+  Default Sysmon configuration installed by tp_agent.py's "Install Sysmon"
+  action (see install_sysmon()). Deliberately compact rather than a full
+  community ruleset (e.g. SwiftOnSecurity's), self-authored to avoid any
+  licensing/attribution question from bundling a specific third-party file
+  verbatim, and scoped to the handful of event types that give the best
+  detection value for the least noise: process creation, network
+  connections, process-injection indicators, and file-creation activity
+  (including the FileCreateTime "timestomp" tamper indicator).
+  onmatch="exclude" on every rule group means "log everything of this type
+  except what's explicitly excluded below", a real, working default, not
+  a placeholder. Adjust/replace via Settings if you need something more
+  targeted; the agent never overwrites a config file it didn't just install.
+-->
+<Sysmon schemaversion="4.91">
+  <EventFiltering>
+    <RuleGroup name="" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <!-- High-volume, low-value default noise. -->
+        <Image condition="end with">conhost.exe</Image>
+      </ProcessCreate>
+    </RuleGroup>
+    <RuleGroup name="" groupRelation="or">
+      <NetworkConnect onmatch="exclude">
+        <DestinationIp condition="is">127.0.0.1</DestinationIp>
+      </NetworkConnect>
+    </RuleGroup>
+    <RuleGroup name="" groupRelation="or">
+      <!-- Timestamp tampering on an existing file is a common
+           anti-forensics / ransomware indicator. -->
+      <FileCreateTime onmatch="exclude" />
+    </RuleGroup>
+    <RuleGroup name="" groupRelation="or">
+      <ProcessTerminate onmatch="exclude" />
+    </RuleGroup>
+    <RuleGroup name="" groupRelation="or">
+      <!-- Classic process-injection technique. -->
+      <CreateRemoteThread onmatch="exclude" />
+    </RuleGroup>
+    <RuleGroup name="" groupRelation="or">
+      <FileCreate onmatch="exclude">
+        <TargetFilename condition="end with">.tmp</TargetFilename>
+      </FileCreate>
+    </RuleGroup>
+  </EventFiltering>
+</Sysmon>

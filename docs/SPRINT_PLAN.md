@@ -288,20 +288,31 @@ Also fixed pre-existing bug found while testing this sprint: `/onboarding` was w
 **Goal:** Analysts and stakeholders can pull reports and pivot on indicators of compromise.
 
 **Backend**
-- [ ] Report generation queries: daily, weekly, monthly, compliance (SOC 2/HIPAA/PCI-DSS evidence rollup).
-- [ ] Report scheduling (delivery config storage — actual email delivery can be stubbed).
-- [ ] Threat intel lookup: IOC (IP/domain/hash) search against a static or free-tier feed; MITRE ATT&CK tagging on rules.
+- [x] Report generation queries: daily, weekly, monthly, compliance (SOC 2/HIPAA/PCI-DSS evidence rollup — real counts against documented thresholds, not a certification claim).
+- [x] Report scheduling (delivery config storage — real `ReportSchedule` model/table; actual email delivery stubbed as a logged `[REPORT DELIVERY]` line, fired when a report of a matching type is actually generated, same pattern as Sprint 6's playbook stub actions).
+- [x] Threat intel lookup: IOC (IP/domain/hash) search against a static curated feed (50 real, documented indicators — Tor exits, sinkholed malware kill-switch domains, EICAR test hashes, etc.); MITRE ATT&CK tagging on rules (`alert_rules.mitre_technique`, freeform).
 
-**Frontend**
-- [ ] Reports page (`isReports`) — tabs: Daily (`repIsDaily`, with timeframe picker `repTimeframeOpen`), Weekly (`repIsWeekly`), Monthly (`repIsMonthly`), Compliance (`repIsCompliance`), Builder (`repIsBuilder`), Library (`repIsLibrary`).
-- [ ] Schedule report modal (`scheduleOpen`), export-to-PDF modal (`exportPdfOpen`), custom date-range modal (`customRangeOpen`), report-panel detail (`repPanelOpen`).
-- [ ] Threat Intel page (`isIntel`): IOC search, MITRE grouping (`mitreGroupBy`, `mitreExpandedRow`), recent lookups, feed status (`intelFeedsOpen`).
-- [ ] Block IOC (`isBlockModal`), Allow IOC (`isAllowModal`), rule-from-intel (`isRuleModalIntel`), link-to-incident (`isLinkModal`) modals.
+**Frontend — rebuilt a second time to match the actual UI mockup** (`reference/TruePositive.dc .html`), this project's established source of truth for screen layout — the first pass above was built from the sprint's text description alone without checking it, and came up materially short (caught via direct user critique + reading the mockup itself). All real data throughout, mockup's own decorative/placeholder content (named third-party vendor feeds, a fixed score, non-filtered "related" lists) deliberately not copied literally — see below.
+- [x] Reports page — tabs: Daily, Weekly, Monthly, Compliance, Custom builder, Library. Header actions are real "Schedule delivery" (modal) and "Export PDF" buttons, matching the mockup, instead of a bespoke Schedules tab.
+- [x] Daily: KPI cards with real vs.-yesterday deltas, a real Today-vs-Yesterday hourly ingestion chart, progress-bar "Top event types", per-severity "Alerts created today" breakdown, and a real **Agent status** list (name/host/platform/status — no fabricated uptime %, since this app has no historical connectivity log to compute one honestly).
+- [x] Weekly: real week-over-week KPI deltas, real alerts-by-day chart, real **Trending rules** (this week vs. prior week, per rule).
+- [x] Monthly: a real **executive summary** paragraph, templated from real counts (not generative text) — e.g. "900 events processed, 70 alerts created… Event volume is flat versus the prior 30 days."
+- [x] Compliance: redesigned as per-control cards (was a flat table) with real citations (SOC 2/HIPAA/PCI-DSS clause numbers), a Threshold column, and "Last evidence pull" = the report's own `generated_at`.
+- [x] Custom builder: report type + a real custom date range (`period_start`/`period_end`, threaded through `generate_report`) — the mockup's natural-language filter and Table/Chart/Map toggle were not built (would require either fabricating query execution or inventing geo data this app doesn't have).
+- [x] Library: real owner email (new `reports.created_by` column) + real CSV/PDF export actions per row.
+- [x] Export PDF is a **real** PDF (fpdf2, pure-Python) — not previously built at all in the first pass, despite being asked for.
+- [x] Threat Intel page rebuilt from a live-search list into the mockup's actual shape: an explicit type-selector + single-indicator **lookup**, not autocomplete search. Real reputation score (deterministic, derived from the curated feed's own confidence rating — honestly not a live multi-vendor consensus, since this app has exactly one feed), real Category card, and a real **Seen in workspace** card (first/last seen + alert count, from a real substring cross-reference against this org's own logs).
+- [x] **MITRE ATT&CK mapping** enriched with a real Tactic column (small curated technique→tactic reference table for common IDs; unrecognized IDs honestly show none rather than a guess).
+- [x] **Related incidents** / **Recent alerts** sections — real cross-references (previously didn't exist at all), via the same log-substring match.
+- [x] Block / Allow are real modals now (Reason dropdown, Notes, expiry date) — previously a single-line confirm dialog.
+- [x] **Create Alert Rule** now creates a rule that can actually fire: added a real `message_contains` condition to `AlertRuleConditions` + `log_service._rule_matches` (previously the "create rule" action reused the generic event_type/min_severity modal, which had no way to express "match this indicator's value").
+- [x] **Link to Incident** — not built at all in the first pass; now bulk-links every alert an indicator is really related to (reusing the existing `incident_service.link_alert`), via a real single-select incident picker. Scoped down from the mockup's multi-select checkboxes since the backend action links to exactly one incident.
+- [~] "Export Card" (the mockup's fifth action button) was not built — no real capability exists in this app to render/export a visual card as an image, and fabricating one felt worse than omitting it.
 
 **Acceptance Criteria**
-- Daily report reflects real data for "today" (hour-by-hour breakdown, top events, alerts created, agent status).
-- An IOC search against a known-bad test value returns a result and can be blocked, creating a whitelist/blocklist entry.
-- At least Daily + one other report type render with real (not mocked) data; Compliance/Builder/Library can ship with representative sample data if time-constrained (see cut list).
+- [x] Daily report reflects real data for "today" (hourly breakdown, alerts created/resolved, incidents opened, severity distribution, top event types, agent count) — verified live against a seeded org, not just unit tests.
+- [x] An IOC search against a known-bad test value (e.g. `185.220.101.1`) returns a result and can be blocked, creating a **real** blocklist entry (not a stub) — verified live: searched, clicked Block, confirmed the entry appears in Settings → Whitelisting's Blocklist view.
+- [x] At least Daily + one other report type render with real (not mocked) data — all four generatable types (Daily/Weekly/Monthly/Compliance) do, from the same real-data query layer; no representative/sample data was needed.
 
 **Dependencies:** Sprint 5 (alerts/logs to report on), Sprint 6 (incidents to reference in reports).
 **Risk:** High — this sprint has the widest feature surface (6 report sub-views + full intel page + 4 modals) in the smallest time budget. This is the first sprint to draw from the cut list below if Sprint 4's checkpoint showed slippage.

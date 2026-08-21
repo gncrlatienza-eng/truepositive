@@ -99,7 +99,7 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected, allo
               padding: theme.space[4],
               borderRadius: theme.radius.md,
               border: `1px solid ${platform === p.id ? theme.color.accent : theme.color.border}`,
-              background: platform === p.id ? "rgba(8, 145, 178, 0.1)" : theme.color.surface,
+              background: platform === p.id ? "rgba(8, 144, 177, 0.1)" : theme.color.surface,
               color: theme.color.text,
               cursor: agent ? "default" : "pointer",
               textAlign: "left",
