@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { deleteWhitelistEntry, listWhitelist } from "../../api/whitelist";
@@ -33,6 +34,11 @@ export default function WhitelistTab() {
 
   if (loading) return null;
 
+  // Every existing entry defaults to kind="allow" (the column's own DB
+  // default, for entries created before Sprint 8) — filtering on that
+  // instead of assuming absence-means-allow keeps this correct either way.
+  const filtered = entries.filter((e) => (e.kind || "allow") === mode);
+
   return (
     <div>
       <ErrorBanner>{error}</ErrorBanner>
@@ -45,7 +51,7 @@ export default function WhitelistTab() {
             padding: "8px 18px",
             borderRadius: 999,
             border: `1px solid ${mode === "allow" ? theme.color.accent : theme.color.border}`,
-            background: mode === "allow" ? "rgba(8, 145, 178, 0.1)" : "transparent",
+            background: mode === "allow" ? "rgba(8, 144, 177, 0.1)" : "transparent",
             color: theme.color.text,
             cursor: "pointer",
             fontSize: 13,
@@ -56,20 +62,20 @@ export default function WhitelistTab() {
         </button>
         <button
           type="button"
-          disabled
-          title="Blocklists are coming in a later release"
+          onClick={() => setMode("block")}
+          title="Block entries are created from the Threat Intel page's 'Block' action"
           style={{
             padding: "8px 18px",
             borderRadius: 999,
-            border: `1px solid ${theme.color.border}`,
-            background: "transparent",
-            color: theme.color.textFaint,
-            cursor: "not-allowed",
+            border: `1px solid ${mode === "block" ? theme.color.severity.critical : theme.color.border}`,
+            background: mode === "block" ? "rgba(220, 38, 38, 0.1)" : "transparent",
+            color: theme.color.text,
+            cursor: "pointer",
             fontSize: 13,
             fontWeight: 600,
           }}
         >
-          BLOCKLIST — coming soon
+          BLOCKLIST
         </button>
       </div>
 
@@ -77,18 +83,26 @@ export default function WhitelistTab() {
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: theme.space[4] }}
       >
         <div style={{ fontSize: 14, color: theme.color.textMuted }}>
-          {entries.length} entr{entries.length === 1 ? "y" : "ies"}
+          {filtered.length} entr{filtered.length === 1 ? "y" : "ies"}
         </div>
-        <PrimaryButton type="button" style={{ width: "auto" }} onClick={() => setModalOpen(true)}>
-          + Add entry
-        </PrimaryButton>
+        {mode === "allow" ? (
+          <PrimaryButton type="button" style={{ width: "auto" }} onClick={() => setModalOpen(true)}>
+            + Add entry
+          </PrimaryButton>
+        ) : (
+          <Link to="/app/intel" style={{ fontSize: 13, color: theme.color.accent, textDecoration: "none" }}>
+            Block an indicator from Threat Intel →
+          </Link>
+        )}
       </div>
 
-      {entries.length === 0 ? (
-        <div style={{ fontSize: 14, color: theme.color.textFaint }}>No whitelist entries yet.</div>
+      {filtered.length === 0 ? (
+        <div style={{ fontSize: 14, color: theme.color.textFaint }}>
+          {mode === "allow" ? "No whitelist entries yet." : "No blocked indicators yet."}
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
-          {entries.map((e) => (
+          {filtered.map((e) => (
             <div
               key={e.id}
               style={{

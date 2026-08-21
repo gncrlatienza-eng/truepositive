@@ -1,0 +1,47 @@
+####
+# Tailscale overlay — run together with the base file, never alone:
+#   docker compose -f docker-compose.yml -f docker-compose.tailscale.yml up -d --build
+#
+# What this changes vs. the dev defaults:
+#   - Backend: no host port at all (only reachable from other containers on
+#     the internal Compose network) — same posture as docker-compose.prod.yml.
+#   - Frontend: bound to 127.0.0.1 only, not 0.0.0.0 — nothing is exposed to
+#     the LAN. `tailscale serve` (run separately, once, on this host — see
+#     README.md's "Deploying over Tailscale" section) is what actually
+#     forwards traffic in from the tailnet to 127.0.0.1:3000, terminating
+#     real HTTPS with a Tailscale-issued cert along the way. There is no
+#     `caddy` service here — the already-running Tailscale daemon on the
+#     host is the reverse proxy and cert issuer, so nothing else needs to
+#     bind 80/443 or talk to Let's Encrypt.
+#   - Postgres/JWT/credential-encryption secrets are REQUIRED — compose
+#     refuses to start rather than silently running with dev defaults, same
+#     as the prod overlay: any exposure beyond pure localhost dev shouldn't
+#     run on dev-default credentials.
+####
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a real POSTGRES_PASSWORD in .env before deploying — no dev default over Tailscale}
+
+  backend:
+    # No host port published — only reachable from other containers on the
+    # Compose network (i.e. the frontend, via nginx's /api/ proxy). Dev's
+    # 8000:8000 mapping is dropped.
+    ports: !reset []
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-truepositive}:${POSTGRES_PASSWORD:?Set a real POSTGRES_PASSWORD in .env before deploying}@postgres:5432/truepositive
+      JWT_SECRET: ${JWT_SECRET:?Set a real JWT_SECRET in .env before deploying — no dev default over Tailscale}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?Set a real CREDENTIAL_ENCRYPTION_KEY in .env before deploying}
+      # Browser requests stay same-origin under the tailnet HTTPS URL via
+      # tailscale serve -> nginx's /api/ proxy, so this mostly matters for
+      # direct (non-proxied) API consumers.
+      CORS_ORIGINS: https://${TS_HOSTNAME:?Set TS_HOSTNAME in .env to your Tailscale MagicDNS name — e.g. gio.tailnet-name.ts.net (run `tailscale status` to find it)}
+
+  frontend:
+    # Loopback-only: tailscale serve connects to 127.0.0.1:3000 on this host
+    # directly, so the container never needs to be reachable from the LAN.
+    # `!override` replaces the base file's 0.0.0.0 mapping instead of
+    # appending to it (Compose's default list-merge behavior is to
+    # concatenate, which would otherwise leave both bindings active).
+    ports: !override
+      - "127.0.0.1:3000:3000"

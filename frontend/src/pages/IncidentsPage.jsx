@@ -133,7 +133,7 @@ export default function IncidentsPage() {
       render: (r) => (
         <span
           style={{
-            fontWeight: 700,
+            fontWeight: 600,
             color:
               r.risk_score >= 75
                 ? theme.color.severity.critical
@@ -181,9 +181,6 @@ export default function IncidentsPage() {
         >
           <div
             style={{
-              maxWidth: 1200,
-              width: "100%",
-              margin: "0 auto",
               flex: 1,
               minHeight: 0,
               display: "flex",
@@ -332,7 +329,7 @@ export default function IncidentsPage() {
                     padding: theme.space[3],
                     margin: theme.space[4],
                     marginBottom: 0,
-                    background: "rgba(8, 145, 178, 0.08)",
+                    background: "rgba(8, 144, 177, 0.08)",
                     border: `1px solid ${theme.color.accent}`,
                     borderRadius: theme.radius.md,
                     flexShrink: 0,

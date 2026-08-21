@@ -269,7 +269,7 @@ export default function IncidentDetailModal({ open, onClose, incident, onUpdate 
           <Field label="Risk score">
             <span
               style={{
-                fontWeight: 700,
+                fontWeight: 600,
                 fontSize: 15,
                 color:
                   incident.risk_score >= 75

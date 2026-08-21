@@ -187,7 +187,7 @@ def _hourly_log_buckets(db: Session, org_id: uuid.UUID, since: datetime) -> list
         .group_by(func.date_trunc("hour", Log.timestamp))
         .order_by(func.date_trunc("hour", Log.timestamp))
     ).all()
-    return [HourBar(hour_label=_hour_label(bucket), count=count) for bucket, count in rows]
+    return [HourBar(hour_label=_hour_label(bucket), bucket_start=bucket, count=count) for bucket, count in rows]
 
 
 # Bucketed by Alert.created_at (when it fired), not current status — these
@@ -204,7 +204,7 @@ def _hourly_alert_buckets(
     rows = db.execute(
         stmt.group_by(func.date_trunc("hour", Alert.created_at)).order_by(func.date_trunc("hour", Alert.created_at))
     ).all()
-    return [HourBar(hour_label=_hour_label(bucket), count=count) for bucket, count in rows]
+    return [HourBar(hour_label=_hour_label(bucket), bucket_start=bucket, count=count) for bucket, count in rows]
 
 
 def _hourly_risk_buckets(db: Session, org_id: uuid.UUID, since: datetime) -> list[HourBar]:
@@ -219,7 +219,9 @@ def _hourly_risk_buckets(db: Session, org_id: uuid.UUID, since: datetime) -> lis
         scores[bucket] = scores.get(bucket, 0.0) + count * RISK_WEIGHTS[severity]
     # HourBar.count is an int (shared with real event/alert counts elsewhere)
     # — round rather than widen the shared schema just for this one sparkline.
-    return [HourBar(hour_label=_hour_label(bucket), count=round(v)) for bucket, v in scores.items()]
+    return [
+        HourBar(hour_label=_hour_label(bucket), bucket_start=bucket, count=round(v)) for bucket, v in scores.items()
+    ]
 
 
 # Same weighted formula as _risk_score, but over alerts *created* in a given
@@ -255,10 +257,10 @@ def _ingest_summary(db: Session, org_id: uuid.UUID, window: Window) -> IngestSum
 
     if buckets:
         peak = max(buckets, key=lambda b: b.count)
-        peak_hour_label, peak_count = peak.hour_label, peak.count
+        peak_hour_label, peak_hour_start, peak_count = peak.hour_label, peak.bucket_start, peak.count
         avg_per_hour = round(sum(b.count for b in buckets) / len(buckets), 1)
     else:
-        peak_hour_label, peak_count, avg_per_hour = None, 0, 0.0
+        peak_hour_label, peak_hour_start, peak_count, avg_per_hour = None, None, 0, 0.0
 
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_total = (
@@ -284,6 +286,7 @@ def _ingest_summary(db: Session, org_id: uuid.UUID, window: Window) -> IngestSum
 
     return IngestSummary(
         peak_hour_label=peak_hour_label,
+        peak_hour_start=peak_hour_start,
         peak_count=peak_count,
         avg_per_hour=avg_per_hour,
         today_total=today_total,
@@ -482,6 +485,7 @@ def get_ingestion_panel(db: Session, org_id: uuid.UUID, window: Window = "24h") 
         window=window,
         hourly=hourly,
         peak_hour_label=summary.peak_hour_label,
+        peak_hour_start=summary.peak_hour_start,
         peak_count=summary.peak_count,
         avg_per_hour=summary.avg_per_hour,
         today_total=summary.today_total,
@@ -713,7 +717,9 @@ def get_rule_panel(db: Session, org_id: uuid.UUID, rule_id: uuid.UUID) -> RulePa
         .group_by(func.date_trunc("hour", Alert.created_at))
         .order_by(func.date_trunc("hour", Alert.created_at))
     ).all()
-    hourly = [HourBar(hour_label=_hour_label(bucket), count=count) for bucket, count in hourly_rows]
+    hourly = [
+        HourBar(hour_label=_hour_label(bucket), bucket_start=bucket, count=count) for bucket, count in hourly_rows
+    ]
 
     source_rows = db.execute(
         select(LogSource.id, LogSource.name, LogSource.host, func.count())

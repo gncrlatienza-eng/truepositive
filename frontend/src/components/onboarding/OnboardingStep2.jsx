@@ -1,8 +1,16 @@
+import { useState } from "react";
 import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton } from "../auth/fields";
 import AgentEnrollmentPanel from "../agents/AgentEnrollmentPanel";
 
 export default function OnboardingStep2({ onBack, onNext, onAgentCreated }) {
+  // Continue only proceeds once the agent has actually sent a real heartbeat
+  // (AgentEnrollmentPanel's onConnected fires from its own live poll of
+  // GET /agents/{id}) -- previously Continue and "Skip" did the exact same
+  // thing (call onNext unconditionally), so there was no way to tell someone
+  // who'd deployed a real agent from someone who hadn't. "Skip" stays as the
+  // explicit, deliberate bypass for people not deploying right now.
+  const [agentConnected, setAgentConnected] = useState(false);
   return (
     <div>
       <div
@@ -23,7 +31,7 @@ export default function OnboardingStep2({ onBack, onNext, onAgentCreated }) {
       </p>
 
       <div style={{ marginBottom: theme.space[6] }}>
-        <AgentEnrollmentPanel onAgentCreated={onAgentCreated} />
+        <AgentEnrollmentPanel onAgentCreated={onAgentCreated} onConnected={() => setAgentConnected(true)} />
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -44,7 +52,13 @@ export default function OnboardingStep2({ onBack, onNext, onAgentCreated }) {
           >
             Skip — I&rsquo;ll deploy later
           </button>
-          <PrimaryButton type="button" style={{ width: "auto" }} onClick={onNext}>
+          <PrimaryButton
+            type="button"
+            style={{ width: "auto" }}
+            onClick={onNext}
+            disabled={!agentConnected}
+            title={agentConnected ? undefined : "Waiting for the agent's first heartbeat — or use Skip"}
+          >
             Continue
           </PrimaryButton>
         </div>

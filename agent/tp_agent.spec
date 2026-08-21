@@ -5,7 +5,12 @@ a = Analysis(
     ['tp_agent.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    # icon.ico here (bundled, extracted to sys._MEIPASS at runtime) is
+    # separate from EXE(...)'s icon=['icon.ico'] below -- that one only
+    # brands the .exe file itself (Explorer/taskbar); this one lets the
+    # running app set its own window icon via root.iconbitmap() at runtime,
+    # since Tk can't reach into the exe's own embedded resource for that.
+    datas=[('icon.ico', '.'), ('sysmon_config.xml', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

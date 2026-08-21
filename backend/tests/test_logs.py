@@ -87,6 +87,39 @@ def test_ingest_writes_logs_and_evaluates_rules(client, auth_headers, db_session
     assert alerts["items"][0]["rule_id"] == str(rule.id)
 
 
+def test_message_contains_condition_matches_ioc_in_log(client, auth_headers, db_session):
+    # Backs the Threat Intel page's "Create Alert Rule" action: firing when
+    # a specific indicator value shows up in a log line, which
+    # event_type/min_severity alone can't express.
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    source = _create_local_source(client, auth_headers, agent_id)
+
+    org_id = client.get("/auth/me", headers=auth_headers).json()["org"]["id"]
+    rule = AlertRule(
+        org_id=org_id,
+        name="Traffic from known Tor exit",
+        conditions={"message_contains": "185.220.101.1"},
+        severity=Severity.HIGH,
+        enabled=True,
+    )
+    db_session.add(rule)
+    db_session.flush()
+
+    response = client.post(
+        f"/agents/{agent_id}/logs",
+        json={
+            "logs": [
+                _log_entry(source["id"], message="outbound connection to 185.220.101.1 on port 443"),
+                _log_entry(source["id"], message="unrelated benign log line"),
+            ]
+        },
+        headers={"X-Agent-Key": key},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["alerts_created"] == 1
+
+
 def test_delete_source_detaches_logs(client, auth_headers):
     created = _create_agent(client, auth_headers)
     agent_id, key = created["agent"]["id"], created["enrollment_key"]

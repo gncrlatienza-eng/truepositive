@@ -52,13 +52,7 @@ export default function TopBar() {
         left: 0,
         right: 0,
         height: 64,
-        // Frosted glass instead of a flat opaque fill — this bar is
-        // position:fixed with every page's own content scrolling underneath
-        // it, which is exactly the situation a translucent blurred surface
-        // (rather than a solid color) reads as "glass" instead of "gray box."
-        background: "rgba(20, 20, 23, 0.72)",
-        backdropFilter: "blur(20px) saturate(180%)",
-        WebkitBackdropFilter: "blur(20px) saturate(180%)",
+        background: theme.color.surface,
         borderBottom: `1px solid ${theme.color.border}`,
         padding: "0 24px",
         display: "flex",
@@ -74,25 +68,7 @@ export default function TopBar() {
           to="/app"
           style={{ display: "flex", alignItems: "center", gap: 11, textDecoration: "none", color: theme.color.text }}
         >
-          <div
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 7,
-              background: theme.color.accent,
-              color: "#0A0A0C",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: theme.font.mono,
-              fontSize: 16,
-              fontWeight: 700,
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
-          >
-            &gt;
-          </div>
+          <img src="/tp-logo.png" alt="" width={30} height={30} style={{ flexShrink: 0 }} />
           {/* Was plain single-color text — the same two-tone split
               (True=text, Positive=accent) already used on Login/Onboarding
               is the real wordmark; this was the one place still missing it. */}
@@ -181,11 +157,11 @@ export default function TopBar() {
                 height: 34,
                 borderRadius: "50%",
                 background: theme.color.accent,
-                color: "#0A0A0C",
+                color: "#ffffff",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontWeight: 700,
+                fontWeight: 600,
                 fontSize: 14,
                 flexShrink: 0,
               }}
@@ -208,12 +184,10 @@ export default function TopBar() {
                 top: "calc(100% + 8px)",
                 right: 0,
                 minWidth: 200,
-                background: "rgba(20, 20, 23, 0.78)",
-                backdropFilter: "blur(20px) saturate(180%)",
-                WebkitBackdropFilter: "blur(20px) saturate(180%)",
-                border: "1px solid rgba(255,255,255,0.12)",
+                background: theme.color.raised,
+                border: `1px solid ${theme.color.border}`,
                 borderRadius: theme.radius.md,
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), 0 8px 24px rgba(0, 0, 0, 0.4)",
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
                 zIndex: 200,
                 overflow: "hidden",
               }}

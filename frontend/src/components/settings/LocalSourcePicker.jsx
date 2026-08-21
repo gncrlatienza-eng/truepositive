@@ -28,9 +28,15 @@ function Badge({ color, children }) {
 // resets the selection instead of mixing stale entries from another catalog.
 export default function LocalSourcePicker({ platform = "windows", existingPaths = [], onChange }) {
   const catalog = catalogForPlatform(platform);
+  // Recommended-but-unmet-prerequisite sources (needs Administrator, needs
+  // Sysmon installed) are shown and still explicitly selectable, but not
+  // auto-checked -- silently pre-enrolling a fresh setup into a channel
+  // that will just fail forever, with the only feedback being a console
+  // warning most people never see, is a worse default than asking for one
+  // deliberate opt-in click from someone who's confirmed the prerequisite.
   const [sources, setSources] = useState(() =>
     catalog
-      .filter((c) => c.recommended && !existingPaths.includes(c.path))
+      .filter((c) => c.recommended && !c.needsAdmin && !c.requiresSysmon && !existingPaths.includes(c.path))
       .map((c) => ({ name: c.name, path: c.path })),
   );
   const [addingCustom, setAddingCustom] = useState(false);
@@ -104,12 +110,13 @@ export default function LocalSourcePicker({ platform = "windows", existingPaths 
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
-                style={{ display: "flex", alignItems: "center", gap: theme.space[2], fontSize: 14, fontWeight: 500 }}
+                style={{ display: "flex", alignItems: "center", gap: theme.space[2], fontSize: 14, fontWeight: 600 }}
               >
                 {entry.name}
                 {alreadyAdded && <Badge color={theme.color.severity.ok}>Already added</Badge>}
                 {!alreadyAdded && entry.recommended && <Badge color={theme.color.severity.ok}>Recommended</Badge>}
                 {entry.needsAdmin && <Badge color={theme.color.severity.medium}>Needs Administrator</Badge>}
+                {entry.requiresSysmon && <Badge color={theme.color.severity.high}>Requires Sysmon installed</Badge>}
               </div>
               <div style={{ fontSize: 12, color: theme.color.textFaint, marginTop: 2 }}>{entry.description}</div>
               <div style={{ fontSize: 12, color: theme.color.textFaint, fontFamily: theme.font.mono, marginTop: 2 }}>
@@ -132,7 +139,7 @@ export default function LocalSourcePicker({ platform = "windows", existingPaths 
           }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{s.name}</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
             <div style={{ fontSize: 12, color: theme.color.textFaint, fontFamily: theme.font.mono }}>{s.path}</div>
           </div>
           <button

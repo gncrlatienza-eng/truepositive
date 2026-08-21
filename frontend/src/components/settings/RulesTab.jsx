@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { createRule, deleteRule, listRules, updateRule } from "../../api/alerts";
-import { SeverityBadge } from "../common/Badge";
+import { Badge, SeverityBadge } from "../common/Badge";
 import ConfirmModal from "../common/ConfirmModal";
 import RuleFormModal from "../rules/RuleFormModal";
 
@@ -218,7 +218,7 @@ export default function RulesTab() {
             gap: theme.space[3],
             padding: theme.space[3],
             marginBottom: theme.space[4],
-            background: "rgba(8, 145, 178, 0.08)",
+            background: "rgba(8, 144, 177, 0.08)",
             border: `1px solid ${theme.color.accent}`,
             borderRadius: theme.radius.md,
           }}
@@ -268,6 +268,7 @@ export default function RulesTab() {
             >
               <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelected(r.id)} />
               <SeverityBadge severity={r.severity} />
+              {r.mitre_technique && <Badge>{r.mitre_technique.split("—")[0].trim()}</Badge>}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{

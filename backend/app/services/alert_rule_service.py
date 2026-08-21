@@ -17,6 +17,7 @@ def create_rule(db: Session, org_id: uuid.UUID, payload: AlertRuleCreate) -> Ale
         conditions=payload.conditions.model_dump(exclude_none=True),
         severity=payload.severity,
         enabled=payload.enabled,
+        mitre_technique=payload.mitre_technique,
     )
     db.add(rule)
     db.commit()

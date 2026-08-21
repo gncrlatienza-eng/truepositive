@@ -35,6 +35,8 @@ def _rule_matches(log: Log, conditions: dict) -> bool:
         return False
     if parsed.min_severity and _SEVERITY_RANK[log.severity] < _SEVERITY_RANK[parsed.min_severity]:
         return False
+    if parsed.message_contains and parsed.message_contains.lower() not in log.message.lower():
+        return False
     return True
 
 

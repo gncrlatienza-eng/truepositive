@@ -1,6 +1,7 @@
 import { theme } from "../../styles/theme";
 import { Card } from "../common/Card";
 import { HourBars } from "../charts/HourBars";
+import { formatLocalHour } from "../../utils/time";
 
 // Pi-hole-style centerpiece chart: one large, prominent gradient area chart
 // directly under the KPI row, spanning the full content width. The ingestion
@@ -43,7 +44,7 @@ export function EventsOverTimeCard({ bars, ingest, window, onOpen }) {
         <div className="tp-events-stat-strip">
           <StatCell
             label="Peak hour"
-            value={ingest.peak_hour_label || "—"}
+            value={formatLocalHour(ingest.peak_hour_start) ?? ingest.peak_hour_label ?? "—"}
             sub={`${ingest.peak_count?.toLocaleString() ?? "0"} events`}
           />
           <StatCell
@@ -98,7 +99,7 @@ function StatCell({ label, value, sub, accent, valueColor }) {
       <div
         style={{
           fontSize: 26,
-          fontWeight: 700,
+          fontWeight: 600,
           letterSpacing: "-0.02em",
           color: valueColor ?? (accent ? theme.color.accent : theme.color.text),
           lineHeight: 1.1,

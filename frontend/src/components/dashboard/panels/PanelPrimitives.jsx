@@ -4,7 +4,7 @@ import { ProgressBar } from "../../charts/ProgressBar";
 export function BigStat({ value, label, color }) {
   return (
     <div>
-      <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-0.02em", color: color || theme.color.text }}>
+      <div style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-0.02em", color: color || theme.color.text }}>
         {value}
       </div>
       {label && <div style={{ fontSize: 14, color: theme.color.textMuted, marginTop: 4 }}>{label}</div>}
@@ -42,7 +42,7 @@ export function Stat({ label, value, sub }) {
       <div style={{ fontSize: 12, color: theme.color.textMuted, textTransform: "uppercase", marginBottom: 4 }}>
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700 }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 600 }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: theme.color.textMuted, marginTop: 2 }}>{sub}</div>}
     </div>
   );

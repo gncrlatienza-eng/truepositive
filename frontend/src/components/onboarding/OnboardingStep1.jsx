@@ -5,15 +5,6 @@ import { wz } from "./onboardingTheme";
 
 const TEAM_SIZES = ["1-5 analysts", "6-20 analysts", "21-50 analysts", "51-100 analysts", "100+ analysts"];
 
-const HELP_DEFAULT = "Tip: Use your company email for better integration with enterprise systems.";
-const HELP_BY_FIELD = {
-  fullName: "This will appear on your profile and in audit logs.",
-  password: "Longer passwords are more secure. Consider using a passphrase.",
-  confirmPassword: "Re-enter your password to confirm it matches.",
-  slug: "This is permanent and will be part of your workspace URL.",
-  teamSize: "You can adjust this later if your team grows.",
-};
-
 function strengthLevel(pw) {
   if (!pw) return 0;
   const hasLen = pw.length >= 8;
@@ -147,12 +138,10 @@ export default function OnboardingStep1({ onNext }) {
     }
   }
 
-  const helpText = HELP_BY_FIELD[focusedField] || HELP_DEFAULT;
-
   return (
     <div>
       <div style={{ marginBottom: 36 }}>
-        <h1 style={{ fontSize: 38, fontWeight: 700, color: wz.textPrimary, fontFamily: wz.font.sans, margin: 0 }}>
+        <h1 style={{ fontSize: 38, fontWeight: 600, color: wz.textPrimary, fontFamily: wz.font.sans, margin: 0 }}>
           Create your workspace
         </h1>
         <p style={{ fontSize: 16, color: "#a0a0a0", lineHeight: 1.5, marginTop: 10 }}>
@@ -374,7 +363,7 @@ export default function OnboardingStep1({ onNext }) {
                   height: 52,
                   padding: 0,
                   color: wz.textPrimary,
-                  fontWeight: 500,
+                  fontWeight: 400,
                 }}
               />
             </div>
@@ -421,25 +410,6 @@ export default function OnboardingStep1({ onNext }) {
           </Link>
         </div>
       </form>
-
-      <div className="tp-wizard-help-panel" style={{ position: "fixed", right: 24, top: 120, width: 280 }}>
-        <div
-          key={helpText}
-          className="tp-wizard-help"
-          style={{
-            background: wz.activeBg,
-            border: `1px solid ${wz.border}`,
-            borderRadius: 8,
-            padding: 18,
-            fontSize: 14,
-            fontFamily: wz.font.sans,
-            color: wz.textSecondary,
-            lineHeight: 1.6,
-          }}
-        >
-          {helpText}
-        </div>
-      </div>
     </div>
   );
 }

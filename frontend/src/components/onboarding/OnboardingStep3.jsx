@@ -90,11 +90,11 @@ export default function OnboardingStep3({ onBack, agentId, platform = "windows" 
               padding: "13px 20px",
               borderRadius: 999,
               border: `1px solid ${mode === m ? theme.color.accent : theme.color.border}`,
-              background: mode === m ? "rgba(8, 145, 178, 0.1)" : "transparent",
+              background: mode === m ? "rgba(8, 144, 177, 0.1)" : "transparent",
               color: theme.color.text,
               cursor: "pointer",
               fontSize: 15,
-              fontWeight: 500,
+              fontWeight: 600,
             }}
           >
             {m === "local" ? "Local — this host" : "Remote — over network"}

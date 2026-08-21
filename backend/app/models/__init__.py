@@ -11,6 +11,7 @@ from app.models.log_source import LogSource
 from app.models.org import Org
 from app.models.playbook import Playbook
 from app.models.report import Report
+from app.models.report_schedule import ReportSchedule
 from app.models.user import User
 from app.models.whitelist_entry import WhitelistEntry
 
@@ -28,6 +29,7 @@ __all__ = [
     "IncidentEventKind",
     "Playbook",
     "Report",
+    "ReportSchedule",
     "WhitelistEntry",
     "AuditLog",
 ]

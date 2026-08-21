@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
-import AuthShell from "../components/auth/AuthShell";
+import AuthModalShell from "../components/auth/AuthModalShell";
 import { Field, TextInput, PrimaryButton, OutlineButton, ErrorBanner } from "../components/auth/fields";
 
 export default function LoginPage() {
@@ -31,7 +31,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell>
+    <AuthModalShell>
       <h2 style={{ fontSize: 30 }}>Log in to TruePositive</h2>
       <p
         style={{ fontSize: 16, color: theme.color.textMuted, marginTop: theme.space[3], marginBottom: theme.space[7] }}
@@ -148,6 +148,6 @@ export default function LoginPage() {
           </Link>
         </span>
       </div>
-    </AuthShell>
+    </AuthModalShell>
   );
 }
