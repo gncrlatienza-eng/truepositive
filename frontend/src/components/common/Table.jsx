@@ -139,7 +139,7 @@ export function Table({
           style={{
             flexShrink: 0,
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "center",
             alignItems: "center",
             gap: 6,
             padding: theme.space[3],

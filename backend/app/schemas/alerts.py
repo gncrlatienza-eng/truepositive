@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.alert import AlertStatus
 from app.models.common import Severity
@@ -28,6 +28,17 @@ class AlertListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# Manual creation path — an analyst escalating something a rule never
+# flagged (e.g. a suspicious log the rule engine missed). rule_id is always
+# None for these; log_id is optional so an alert can also be raised with no
+# specific triggering log at all.
+class AlertCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    severity: Severity
+    log_id: int | None = None
 
 
 # assignee_id: null clears the assignment, omit to leave it unchanged —

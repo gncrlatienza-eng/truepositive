@@ -16,11 +16,16 @@ from app.schemas.agents import (
     AgentOut,
     AgentRegisterRequest,
     AgentSourceOut,
+    HeartbeatRequest,
     HeartbeatResponse,
+    RelayChildCreate,
+    RelayChildCreatedResponse,
+    RelayProxyRequest,
+    RelayProxyResponse,
 )
 from app.schemas.log_sources import SourceStatusReportRequest, SourceStatusReportResponse
 from app.schemas.logs import LogIngestRequest, LogIngestResponse
-from app.services import agent_service, log_service, log_source_service
+from app.services import agent_service, log_service, log_source_service, relay_service
 from app.utils.rate_limit import by_agent_id, rate_limit
 from app.utils.security import get_current_agent, get_current_user, verify_password
 
@@ -133,6 +138,26 @@ def download_windows_agent_configured(
     )
 
 
+# Dashboard-initiated (Phase 1 manual pairing) — the admin creating this
+# credential from the dashboard is itself the authorization, same trust
+# model as POST /agents above; no separate approval step exists yet (that
+# only becomes necessary in Phase 2, for a device the hub finds on its own).
+# A static two-segment path, defined ahead of the single-segment /{agent_id}
+# routes below so it can never be shadowed by them — same reasoning as the
+# /download/* routes above.
+@router.post("/relay-children", response_model=RelayChildCreatedResponse, status_code=status.HTTP_201_CREATED)
+def create_relay_child(
+    payload: RelayChildCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    agent, raw_key, hub_relay_addr = relay_service.create_relay_child(db, current_user.org_id, payload)
+    return RelayChildCreatedResponse(
+        agent=AgentOut.model_validate(agent),
+        enrollment_key=raw_key,
+        enrollment_expires_at=agent.enrollment_expires_at,
+        hub_relay_addr=hub_relay_addr,
+    )
+
+
 @router.get("/{agent_id}", response_model=AgentOut)
 def get_agent(agent_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return agent_service.get_agent(db, current_user.org_id, agent_id)
@@ -187,8 +212,21 @@ def register_agent(
     response_model=HeartbeatResponse,
     dependencies=[Depends(rate_limit("agent_heartbeat", limit=10, window_seconds=60, key_by=by_agent_id))],
 )
-def heartbeat(agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)):
-    return agent_service.heartbeat(db, agent)
+def heartbeat(
+    payload: HeartbeatRequest | None = None,
+    agent: Agent = Depends(get_current_agent),
+    db: Session = Depends(get_db),
+):
+    # Only a hub ever sends a non-null relay_listen_addr (see HeartbeatRequest);
+    # ignored for every other agent even if somehow present, since it's only
+    # meaningful once this agent is actually acting as a relay hub.
+    if agent.is_primary and payload is not None:
+        relay_service.record_hub_relay_addr(agent.id, payload.relay_listen_addr)
+    event_log_reader_member = payload.event_log_reader_member if payload is not None else None
+    sysmon_installed = payload.sysmon_installed if payload is not None else None
+    return agent_service.heartbeat(
+        db, agent, event_log_reader_member=event_log_reader_member, sysmon_installed=sysmon_installed
+    )
 
 
 # Polled by the agent each cycle rather than baked into its downloaded
@@ -228,3 +266,40 @@ def report_agent_source_status(
 ):
     updated = log_source_service.report_source_status(db, agent, payload)
     return SourceStatusReportResponse(updated=updated)
+
+
+# What a hub calls on behalf of one of its relay children — authenticated at
+# two layers: X-Agent-Key proves this caller is a legitimate hub agent
+# (get_current_agent below), and payload.key proves it's actually acting on
+# behalf of *this specific* child (relay_service._get_relay_child verifies
+# it against the child's own agent_key_hash) — hub ownership of *some*
+# child_id was previously being treated as authorization for *any*
+# child_id, which a security review found exploitable by anyone able to
+# reach the hub's local LAN listener (see SECURITY.md). Rate-limited per hub
+# agent id, at a higher ceiling than a single direct-connect agent's own
+# /heartbeat + /sources + /logs combined, since one hub call here can stand
+# in for several children's worth of traffic each cycle.
+@router.post(
+    "/{agent_id}/relay-proxy",
+    response_model=RelayProxyResponse,
+    dependencies=[Depends(rate_limit("agent_relay_proxy", limit=120, window_seconds=60, key_by=by_agent_id))],
+)
+def relay_proxy(payload: RelayProxyRequest, agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)):
+    if payload.kind == "register":
+        if not payload.hostname:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "'hostname' is required when kind is 'register'")
+        child = relay_service.relay_register(db, agent, payload.child_id, payload.key, payload.hostname)
+        return RelayProxyResponse(heartbeat=HeartbeatResponse.model_validate(child))
+    if payload.kind == "heartbeat":
+        child = relay_service.relay_heartbeat(db, agent, payload.child_id, payload.key)
+        return RelayProxyResponse(heartbeat=HeartbeatResponse.model_validate(child))
+    if payload.kind == "sources":
+        sources = relay_service.relay_list_sources(db, agent, payload.child_id, payload.key)
+        return RelayProxyResponse(sources=[AgentSourceOut.model_validate(s) for s in sources])
+    if payload.kind == "source_status":
+        updated = relay_service.relay_report_source_status(
+            db, agent, payload.child_id, payload.key, payload.source_status_results
+        )
+        return RelayProxyResponse(source_status=SourceStatusReportResponse(updated=updated))
+    result = relay_service.relay_ingest_logs(db, agent, payload.child_id, payload.key, payload.logs)
+    return RelayProxyResponse(logs=result)

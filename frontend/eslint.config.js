@@ -27,6 +27,8 @@ export default [
         clearInterval: "readonly",
         ResizeObserver: "readonly",
         Blob: "readonly",
+        IntersectionObserver: "readonly",
+        requestAnimationFrame: "readonly",
       },
     },
     settings: { react: { version: "detect" } },

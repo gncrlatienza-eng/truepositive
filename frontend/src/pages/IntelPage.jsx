@@ -22,6 +22,7 @@ import { ProgressBar } from "../components/charts/ProgressBar";
 import Modal from "../components/common/Modal";
 import { Card } from "../components/common/Card";
 import { SetupLockOverlay } from "../components/common/SetupLockOverlay";
+import { useDelayedHover } from "../hooks/useDelayedHover";
 
 const RECENT_LOOKUPS_KEY = "tp_intel_recent_lookups";
 const MAX_RECENT = 5;
@@ -51,6 +52,30 @@ function downloadBlob(blob, filename) {
   link.click();
   link.remove();
   window.URL.revokeObjectURL(blobUrl);
+}
+
+function RecentChip({ value, onClick }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={["tp-card", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        fontSize: 11,
+        fontFamily: theme.font.mono,
+        color: theme.color.accent,
+        padding: "4px 8px",
+        borderRadius: theme.radius.sm,
+        cursor: "pointer",
+      }}
+    >
+      {value}
+    </span>
+  );
 }
 
 function formatCategory(cat) {
@@ -145,11 +170,21 @@ function ReputationGauge({ score }) {
   );
 }
 
-function InfoCard({ title, badge, children }) {
+function InfoCard({ title, badge, children, delayMs = 0 }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
   return (
     <div
-      className="tp-card"
-      style={{ padding: theme.space[4], minHeight: 220, display: "flex", flexDirection: "column", gap: theme.space[3] }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={["tp-card", "tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        padding: theme.space[4],
+        minHeight: 220,
+        display: "flex",
+        flexDirection: "column",
+        gap: theme.space[3],
+      }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span
@@ -197,13 +232,15 @@ function MitreCoverageMatrix() {
       bodyStyle={{ padding: 0 }}
     >
       <div style={{ padding: theme.space[4], display: "flex", gap: theme.space[3], overflowX: "auto" }}>
-        {tactics.map((t) => {
+        {tactics.map((t, idx) => {
           const pct = t.techniques_total ? t.techniques_covered / t.techniques_total : 0;
           return (
             <div
               key={t.tactic}
               title={`${t.techniques_covered}/${t.techniques_total} techniques covered`}
+              className="tp-intel-card-in"
               style={{
+                animationDelay: `${idx * 30}ms`,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -252,7 +289,12 @@ function MitreCoverageMatrix() {
 
       {techniques.length === 0 ? (
         <div
-          style={{ padding: `0 ${theme.space[4]}px ${theme.space[4]}px`, fontSize: 14, color: theme.color.textMuted }}
+          style={{
+            padding: `0 ${theme.space[4]}px ${theme.space[4]}px`,
+            fontSize: 14,
+            color: theme.color.textMuted,
+            lineHeight: 1.6,
+          }}
         >
           Tag your detection rules with MITRE technique IDs to light up this matrix.{" "}
           <Link to="/settings?tab=rules" style={{ color: theme.color.accent }}>
@@ -312,12 +354,28 @@ function riskColor(score) {
 }
 
 function FeedHealthCard({ feedInfo, typeCounts }) {
-  if (!feedInfo) return null;
+  if (!feedInfo) {
+    return (
+      <div className="tp-card" style={{ padding: theme.space[5] }}>
+        <div className="tp-intel-skeleton" style={{ height: 14, width: 140, marginBottom: theme.space[3] }} />
+        <div className="tp-intel-skeleton" style={{ height: 20, width: 220, marginBottom: 4 }} />
+        <div className="tp-intel-skeleton" style={{ height: 14, width: 300 }} />
+      </div>
+    );
+  }
   return (
-    <div className="tp-card" style={{ padding: theme.space[5] }}>
+    <div className="tp-card tp-intel-card-in" style={{ padding: theme.space[5] }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: theme.space[3] }}>
         <span
-          style={{ width: 8, height: 8, borderRadius: "50%", background: theme.color.severity.ok, flexShrink: 0 }}
+          className="tp-pulse-dot"
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: theme.color.severity.ok,
+            flexShrink: 0,
+            "--tp-pulse-color": theme.color.severity.ok,
+          }}
         />
         <span
           style={{
@@ -360,49 +418,109 @@ function FeedHealthCard({ feedInfo, typeCounts }) {
   );
 }
 
+function TopRiskRow({ indicator: i, onLookup, delayMs }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  return (
+    <div
+      onClick={() => onLookup(i.type, i.value)}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      role="button"
+      tabIndex={0}
+      className={["tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space[3],
+        padding: `${theme.space[2]}px 6px`,
+        borderRadius: theme.radius.sm,
+        borderBottom: `1px solid ${theme.color.border}`,
+        cursor: "pointer",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 12,
+          fontFamily: theme.font.mono,
+          color: theme.color.accent,
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {i.value}
+      </span>
+      <span style={{ fontSize: 11, color: theme.color.textMuted }}>{formatCategory(i.category)}</span>
+      <span style={{ fontSize: 12, fontFamily: theme.font.mono, fontWeight: 600, color: riskColor(i.score) }}>
+        {i.score}
+      </span>
+    </div>
+  );
+}
+
 function TopRiskCard({ indicators, onLookup }) {
   return (
     <SectionCard title="Top indicators by risk">
       {indicators.length === 0 ? (
-        <div style={{ fontSize: 13, color: theme.color.textFaint }}>Loading feed…</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="tp-intel-skeleton" style={{ height: 26 }} />
+          ))}
+        </div>
       ) : (
-        indicators.map((i) => (
-          <div
-            key={`${i.type}-${i.value}`}
-            onClick={() => onLookup(i.type, i.value)}
-            role="button"
-            tabIndex={0}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: theme.space[3],
-              padding: `${theme.space[2]}px 0`,
-              borderBottom: `1px solid ${theme.color.border}`,
-              cursor: "pointer",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 12,
-                fontFamily: theme.font.mono,
-                color: theme.color.accent,
-                flex: 1,
-                minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {i.value}
-            </span>
-            <span style={{ fontSize: 11, color: theme.color.textMuted }}>{formatCategory(i.category)}</span>
-            <span style={{ fontSize: 12, fontFamily: theme.font.mono, fontWeight: 600, color: riskColor(i.score) }}>
-              {i.score}
-            </span>
-          </div>
+        indicators.map((i, idx) => (
+          <TopRiskRow key={`${i.type}-${i.value}`} indicator={i} onLookup={onLookup} delayMs={idx * 30} />
         ))
       )}
     </SectionCard>
+  );
+}
+
+function WorkspaceHitRow({ hit: h, onLookup, delayMs }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={["tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space[3],
+        padding: `${theme.space[2]}px 6px`,
+        borderRadius: theme.radius.sm,
+        borderBottom: `1px solid ${theme.color.border}`,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 12,
+          fontFamily: theme.font.mono,
+          color: theme.color.text,
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {h.value}
+      </span>
+      <span style={{ fontSize: 11, color: theme.color.textMuted }}>{formatCategory(h.category)}</span>
+      <span style={{ fontSize: 11, fontFamily: theme.font.mono, color: theme.color.textFaint }}>
+        {h.alert_count} alert{h.alert_count === 1 ? "" : "s"}
+      </span>
+      <span style={{ fontSize: 11, fontFamily: theme.font.mono, color: theme.color.textFaint }}>
+        {h.last_seen ? new Date(h.last_seen).toLocaleDateString() : "—"}
+      </span>
+      <Button variant="secondary" size="sm" onClick={() => onLookup(h.type, h.value)}>
+        View
+      </Button>
+    </div>
   );
 }
 
@@ -410,49 +528,19 @@ function WorkspaceHitsCard({ hits, onLookup }) {
   return (
     <SectionCard title="Seen in your environment" badge="LAST 7 DAYS">
       {hits === null ? (
-        <div style={{ fontSize: 13, color: theme.color.textFaint }}>Loading…</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="tp-intel-skeleton" style={{ height: 30 }} />
+          ))}
+        </div>
       ) : hits.length === 0 ? (
         <div style={{ fontSize: 13, color: theme.color.textMuted, lineHeight: 1.6 }}>
           No feed indicators matched your logs in the last 7 days. This is good — it means none of the known-bad IOCs in
           the feed have appeared in your environment.
         </div>
       ) : (
-        hits.map((h) => (
-          <div
-            key={`${h.type}-${h.value}`}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: theme.space[3],
-              padding: `${theme.space[2]}px 0`,
-              borderBottom: `1px solid ${theme.color.border}`,
-            }}
-          >
-            <span
-              style={{
-                fontSize: 12,
-                fontFamily: theme.font.mono,
-                color: theme.color.text,
-                flex: 1,
-                minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {h.value}
-            </span>
-            <span style={{ fontSize: 11, color: theme.color.textMuted }}>{formatCategory(h.category)}</span>
-            <span style={{ fontSize: 11, fontFamily: theme.font.mono, color: theme.color.textFaint }}>
-              {h.alert_count} alert{h.alert_count === 1 ? "" : "s"}
-            </span>
-            <span style={{ fontSize: 11, fontFamily: theme.font.mono, color: theme.color.textFaint }}>
-              {h.last_seen ? new Date(h.last_seen).toLocaleDateString() : "—"}
-            </span>
-            <Button variant="secondary" size="sm" onClick={() => onLookup(h.type, h.value)}>
-              View
-            </Button>
-          </div>
+        hits.map((h, idx) => (
+          <WorkspaceHitRow key={`${h.type}-${h.value}`} hit={h} onLookup={onLookup} delayMs={idx * 30} />
         ))
       )}
     </SectionCard>
@@ -498,15 +586,20 @@ function IntelDashboard({ feedInfo, onLookup }) {
       >
         <SectionCard title="Indicator categories">
           {categoryCounts.length === 0 ? (
-            <div style={{ fontSize: 13, color: theme.color.textFaint }}>Loading feed…</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="tp-intel-skeleton" style={{ height: 20 }} />
+              ))}
+            </div>
           ) : (
-            categoryCounts.map((c) => (
-              <ProgressRow
-                key={c.category}
-                label={formatCategory(c.category)}
-                count={c.count}
-                pct={Math.round((c.count / maxCategoryCount) * 100)}
-              />
+            categoryCounts.map((c, idx) => (
+              <div key={c.category} className="tp-intel-card-in" style={{ animationDelay: `${idx * 25}ms` }}>
+                <ProgressRow
+                  label={formatCategory(c.category)}
+                  count={c.count}
+                  pct={Math.round((c.count / maxCategoryCount) * 100)}
+                />
+              </div>
             ))
           )}
         </SectionCard>
@@ -571,7 +664,7 @@ function BlockAllowModal({ open, onClose, kind, ioc, onConfirmed }) {
       title={`Add ${ioc?.value ?? ""} to ${isBlock ? "blocklist" : "allowlist"}?`}
       width={420}
     >
-      <p style={{ fontSize: 12, color: theme.color.textMuted, marginTop: 0 }}>
+      <p style={{ fontSize: 12, color: theme.color.textMuted, marginTop: 0, lineHeight: 1.5 }}>
         {isBlock
           ? "Creates a real blocklist record for this indicator."
           : "This indicator will be excluded from future alerts."}
@@ -871,7 +964,21 @@ export default function IntelPage() {
     <SetupLockOverlay variant="compact">
       {({ agentOfflineOnly }) => (
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-          <div style={{ padding: theme.space[7], boxSizing: "border-box" }}>
+          {/* Sticky header + search bar -- position: sticky needs an opaque
+              background or scrolled-past content shows through it (same
+              reasoning as .tp-table th in index.css), plus a border to mark
+              where the pinned area ends once something is scrolled under it. */}
+          <div
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 20,
+              background: theme.color.background,
+              padding: `${theme.space[7]}px ${theme.space[7]}px ${theme.space[5]}px`,
+              boxSizing: "border-box",
+              borderBottom: `1px solid ${theme.color.border}`,
+            }}
+          >
             <div
               style={{
                 fontSize: 14,
@@ -892,7 +999,6 @@ export default function IntelPage() {
               className="tp-card"
               style={{
                 padding: theme.space[4],
-                marginBottom: theme.space[5],
                 display: "flex",
                 flexDirection: "column",
                 gap: theme.space[3],
@@ -923,28 +1029,16 @@ export default function IntelPage() {
                     Recent
                   </span>
                   {recent.map((v) => (
-                    <span
-                      key={v}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => runLookup(type, v)}
-                      className="tp-card"
-                      style={{
-                        fontSize: 11,
-                        fontFamily: theme.font.mono,
-                        color: theme.color.accent,
-                        padding: "4px 8px",
-                        borderRadius: theme.radius.sm,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {v}
-                    </span>
+                    <RecentChip key={v} value={v} onClick={() => runLookup(type, v)} />
                   ))}
                 </div>
               )}
             </div>
+          </div>
 
+          <div
+            style={{ padding: `${theme.space[5]}px ${theme.space[7]}px ${theme.space[7]}px`, boxSizing: "border-box" }}
+          >
             {/* Everything below the search bar reflects this org's own recent
             log/alert data (cross-references, "seen in workspace", the
             dashboard's environment-hit list) — dimmed while the agent is
@@ -958,323 +1052,331 @@ export default function IntelPage() {
                 transition: "opacity 200ms ease-out, filter 200ms ease-out",
               }}
             >
-              {result ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setResult(null)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: theme.color.accent,
-                      cursor: "pointer",
-                      fontSize: 13,
-                      padding: 0,
-                      marginBottom: theme.space[4],
-                    }}
-                  >
-                    ← Back to overview
-                  </button>
+              <div key={result ? `${result.type}-${result.value}` : "dashboard"} className="tp-mini-pane-enter">
+                {result ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setResult(null)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: theme.color.accent,
+                        cursor: "pointer",
+                        fontSize: 13,
+                        padding: 0,
+                        marginBottom: theme.space[4],
+                      }}
+                    >
+                      ← Back to overview
+                    </button>
 
-                  {!result.found_in_feed && (
-                    <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[5] }}>
-                      Not in the curated feed — showing only real workspace cross-references below.
-                    </div>
-                  )}
+                    {!result.found_in_feed && (
+                      <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[5] }}>
+                        Not in the curated feed — showing only real workspace cross-references below.
+                      </div>
+                    )}
 
-                  {result.whitelist_status && (
+                    {result.whitelist_status && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: theme.space[2],
+                          marginBottom: theme.space[5],
+                        }}
+                      >
+                        <Badge
+                          color={result.whitelist_status === "block" ? theme.color.danger.text : theme.color.safe.text}
+                        >
+                          {result.whitelist_status === "block" ? "Currently blocked" : "Currently allowed"}
+                        </Badge>
+                        <span style={{ fontSize: 12, color: theme.color.textFaint }}>
+                          {result.whitelist_status === "block"
+                            ? "Alerts referencing this indicator are treated as confirmed threats."
+                            : "This indicator is excluded from future alerts."}
+                        </span>
+                      </div>
+                    )}
+
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: theme.space[2],
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                        gap: theme.space[4],
                         marginBottom: theme.space[5],
                       }}
                     >
-                      <Badge
-                        color={result.whitelist_status === "block" ? theme.color.danger.text : theme.color.safe.text}
-                      >
-                        {result.whitelist_status === "block" ? "Currently blocked" : "Currently allowed"}
-                      </Badge>
-                      <span style={{ fontSize: 12, color: theme.color.textFaint }}>
-                        {result.whitelist_status === "block"
-                          ? "Alerts referencing this indicator are treated as confirmed threats."
-                          : "This indicator is excluded from future alerts."}
-                      </span>
-                    </div>
-                  )}
+                      <InfoCard title="Reputation" delayMs={0}>
+                        <ReputationGauge score={result.score} />
+                        <div style={{ fontSize: 12, color: theme.color.textMuted, marginTop: "auto", lineHeight: 1.5 }}>
+                          {result.found_in_feed
+                            ? `Confidence: ${result.confidence} (${result.source})`
+                            : "No score — this indicator isn't in the curated feed."}
+                        </div>
+                      </InfoCard>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                      gap: theme.space[4],
-                      marginBottom: theme.space[5],
-                    }}
-                  >
-                    <InfoCard title="Reputation">
-                      <ReputationGauge score={result.score} />
-                      <div style={{ fontSize: 12, color: theme.color.textMuted, marginTop: "auto" }}>
-                        {result.found_in_feed
-                          ? `Confidence: ${result.confidence} (${result.source})`
-                          : "No score — this indicator isn't in the curated feed."}
-                      </div>
-                    </InfoCard>
+                      <InfoCard title="Category" delayMs={40}>
+                        {result.category ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              alignItems: "center",
+                              padding: "8px 12px",
+                              background: theme.color.background,
+                              border: `1px solid ${theme.color.border}`,
+                              borderRadius: theme.radius.sm,
+                            }}
+                          >
+                            <span style={{ fontSize: 11, color: theme.color.text, fontWeight: 600, flex: 1 }}>
+                              {result.category}
+                            </span>
+                            <span style={{ fontSize: 11, fontFamily: theme.font.mono, color: theme.color.textFaint }}>
+                              ({result.source})
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 13, color: theme.color.textFaint }}>
+                            No category — not in the curated feed.
+                          </div>
+                        )}
+                        {result.description && (
+                          <div
+                            style={{ fontSize: 12, color: theme.color.textMuted, marginTop: "auto", lineHeight: 1.5 }}
+                          >
+                            {result.description}
+                          </div>
+                        )}
+                      </InfoCard>
 
-                    <InfoCard title="Category">
-                      {result.category ? (
+                      <InfoCard title="Seen in workspace" delayMs={80}>
                         <div
                           style={{
                             display: "flex",
-                            gap: 8,
-                            alignItems: "center",
-                            padding: "8px 12px",
-                            background: theme.color.background,
-                            border: `1px solid ${theme.color.border}`,
-                            borderRadius: theme.radius.sm,
+                            flexDirection: "column",
+                            gap: 2,
+                            padding: "9px 0",
+                            borderBottom: `1px solid ${theme.color.border}`,
                           }}
                         >
-                          <span style={{ fontSize: 11, color: theme.color.text, fontWeight: 600, flex: 1 }}>
-                            {result.category}
-                          </span>
-                          <span style={{ fontSize: 11, fontFamily: theme.font.mono, color: theme.color.textFaint }}>
-                            ({result.source})
-                          </span>
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: 13, color: theme.color.textFaint }}>
-                          No category — not in the curated feed.
-                        </div>
-                      )}
-                      {result.description && (
-                        <div style={{ fontSize: 12, color: theme.color.textMuted, marginTop: "auto" }}>
-                          {result.description}
-                        </div>
-                      )}
-                    </InfoCard>
-
-                    <InfoCard title="Seen in workspace">
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2,
-                          padding: "9px 0",
-                          borderBottom: `1px solid ${theme.color.border}`,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: theme.color.textFaint,
-                            letterSpacing: "0.04em",
-                          }}
-                        >
-                          FIRST SEEN
-                        </span>
-                        <span style={{ fontSize: 12, fontFamily: theme.font.mono, fontWeight: 600 }}>
-                          {result.first_seen ? new Date(result.first_seen).toLocaleString() : "Never"}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2,
-                          padding: "9px 0",
-                          borderBottom: `1px solid ${theme.color.border}`,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: theme.color.textFaint,
-                            letterSpacing: "0.04em",
-                          }}
-                        >
-                          LAST SEEN
-                        </span>
-                        <span style={{ fontSize: 12, fontFamily: theme.font.mono, fontWeight: 600 }}>
-                          {result.last_seen ? new Date(result.last_seen).toLocaleString() : "—"}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "9px 0" }}>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: theme.color.textFaint,
-                            letterSpacing: "0.04em",
-                          }}
-                        >
-                          ALERTS TRIGGERED
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontFamily: theme.font.mono,
-                            fontWeight: 600,
-                            color: theme.color.accent,
-                          }}
-                        >
-                          {result.related_alerts.length}
-                        </span>
-                      </div>
-                    </InfoCard>
-                  </div>
-
-                  <div style={{ marginBottom: theme.space[5] }}>
-                    <MitreCoverageMatrix />
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(430px, 1fr))",
-                      gap: theme.space[4],
-                      marginBottom: theme.space[5],
-                    }}
-                  >
-                    <Card
-                      title="Related incidents"
-                      action={
-                        <span style={{ fontSize: 12, color: theme.color.textMuted, fontWeight: 600 }}>
-                          {result.related_incidents.length} incidents
-                        </span>
-                      }
-                      bodyStyle={{ padding: 0 }}
-                    >
-                      {result.related_incidents.length === 0 ? (
-                        <div style={{ padding: theme.space[4], fontSize: 14, color: theme.color.textMuted }}>
-                          No incidents involve this indicator.
-                        </div>
-                      ) : (
-                        result.related_incidents.map((inc) => (
-                          <div
-                            key={inc.id}
+                          <span
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              padding: "10px 16px",
-                              borderBottom: `1px solid ${theme.color.border}`,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: theme.color.textFaint,
+                              letterSpacing: "0.04em",
                             }}
                           >
-                            <span
-                              style={{
-                                fontSize: 13,
-                                color: theme.color.text,
-                                flex: 1,
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {inc.title}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: 12,
-                                color: theme.color.textMuted,
-                                textTransform: "capitalize",
-                              }}
-                            >
-                              {inc.status}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </Card>
-
-                    <Card
-                      title="Recent alerts"
-                      action={
-                        <span style={{ fontSize: 12, color: theme.color.textMuted, fontWeight: 600 }}>
-                          {result.related_alerts.length} alerts
-                        </span>
-                      }
-                      bodyStyle={{ padding: 0 }}
-                    >
-                      {result.related_alerts.length === 0 ? (
-                        <div style={{ padding: theme.space[4], fontSize: 14, color: theme.color.textMuted }}>
-                          No alerts have fired for this indicator.
+                            FIRST SEEN
+                          </span>
+                          <span style={{ fontSize: 12, fontFamily: theme.font.mono, fontWeight: 600 }}>
+                            {result.first_seen ? new Date(result.first_seen).toLocaleString() : "Never"}
+                          </span>
                         </div>
-                      ) : (
-                        result.related_alerts.map((a) => (
-                          <div
-                            key={a.id}
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 2,
+                            padding: "9px 0",
+                            borderBottom: `1px solid ${theme.color.border}`,
+                          }}
+                        >
+                          <span
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              padding: "10px 16px",
-                              borderBottom: `1px solid ${theme.color.border}`,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: theme.color.textFaint,
+                              letterSpacing: "0.04em",
                             }}
                           >
-                            <SeverityBadge severity={a.severity} />
-                            <span
+                            LAST SEEN
+                          </span>
+                          <span style={{ fontSize: 12, fontFamily: theme.font.mono, fontWeight: 600 }}>
+                            {result.last_seen ? new Date(result.last_seen).toLocaleString() : "—"}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "9px 0" }}>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: theme.color.textFaint,
+                              letterSpacing: "0.04em",
+                            }}
+                          >
+                            ALERTS TRIGGERED
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontFamily: theme.font.mono,
+                              fontWeight: 600,
+                              color: theme.color.accent,
+                            }}
+                          >
+                            {result.related_alerts.length}
+                          </span>
+                        </div>
+                      </InfoCard>
+                    </div>
+
+                    <div style={{ marginBottom: theme.space[5] }}>
+                      <MitreCoverageMatrix />
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(430px, 1fr))",
+                        gap: theme.space[4],
+                        marginBottom: theme.space[5],
+                      }}
+                    >
+                      <Card
+                        title="Related incidents"
+                        action={
+                          <span style={{ fontSize: 12, color: theme.color.textMuted, fontWeight: 600 }}>
+                            {result.related_incidents.length} incidents
+                          </span>
+                        }
+                        bodyStyle={{ padding: 0 }}
+                      >
+                        {result.related_incidents.length === 0 ? (
+                          <div style={{ padding: theme.space[4], fontSize: 14, color: theme.color.textMuted }}>
+                            No incidents involve this indicator.
+                          </div>
+                        ) : (
+                          result.related_incidents.map((inc, idx) => (
+                            <div
+                              key={inc.id}
+                              className="tp-intel-card-in"
                               style={{
-                                fontSize: 13,
-                                color: theme.color.text,
-                                flex: 1,
-                                minWidth: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
+                                animationDelay: `${idx * 30}ms`,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: "10px 16px",
+                                borderBottom: `1px solid ${theme.color.border}`,
                               }}
                             >
-                              {a.title}
-                            </span>
-                            <span style={{ fontSize: 12, fontFamily: theme.font.mono, color: theme.color.textFaint }}>
-                              {new Date(a.created_at).toLocaleDateString()}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </Card>
-                  </div>
+                              <span
+                                style={{
+                                  fontSize: 13,
+                                  color: theme.color.text,
+                                  flex: 1,
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {inc.title}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  color: theme.color.textMuted,
+                                  textTransform: "capitalize",
+                                }}
+                              >
+                                {inc.status}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </Card>
 
-                  <div
-                    className="tp-card"
-                    style={{
-                      padding: theme.space[4],
-                      display: "flex",
-                      gap: theme.space[3],
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <Button
-                      variant="danger"
-                      onClick={() => setModal("block")}
-                      disabled={result.whitelist_status === "block"}
+                      <Card
+                        title="Recent alerts"
+                        action={
+                          <span style={{ fontSize: 12, color: theme.color.textMuted, fontWeight: 600 }}>
+                            {result.related_alerts.length} alerts
+                          </span>
+                        }
+                        bodyStyle={{ padding: 0 }}
+                      >
+                        {result.related_alerts.length === 0 ? (
+                          <div style={{ padding: theme.space[4], fontSize: 14, color: theme.color.textMuted }}>
+                            No alerts have fired for this indicator.
+                          </div>
+                        ) : (
+                          result.related_alerts.map((a, idx) => (
+                            <div
+                              key={a.id}
+                              className="tp-intel-card-in"
+                              style={{
+                                animationDelay: `${idx * 30}ms`,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: "10px 16px",
+                                borderBottom: `1px solid ${theme.color.border}`,
+                              }}
+                            >
+                              <SeverityBadge severity={a.severity} />
+                              <span
+                                style={{
+                                  fontSize: 13,
+                                  color: theme.color.text,
+                                  flex: 1,
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {a.title}
+                              </span>
+                              <span style={{ fontSize: 12, fontFamily: theme.font.mono, color: theme.color.textFaint }}>
+                                {new Date(a.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </Card>
+                    </div>
+
+                    <div
+                      className="tp-card"
+                      style={{
+                        padding: theme.space[4],
+                        display: "flex",
+                        gap: theme.space[3],
+                        flexWrap: "wrap",
+                      }}
                     >
-                      {result.whitelist_status === "block" ? "Blocked" : "Block"}
-                    </Button>
-                    <Button
-                      variant="safe"
-                      onClick={() => setModal("allow")}
-                      disabled={result.whitelist_status === "allow"}
-                    >
-                      {result.whitelist_status === "allow" ? "Allowed" : "Allow"}
-                    </Button>
-                    <div style={{ flex: 1 }} />
-                    <Button variant="secondary" onClick={() => setModal("rule")}>
-                      Create Alert Rule
-                    </Button>
-                    <Button variant="secondary" onClick={() => setModal("link")}>
-                      Link to Incident
-                    </Button>
-                    <Button variant="secondary" onClick={exportIndicatorCard}>
-                      Export indicator card
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <IntelDashboard feedInfo={feedInfo} onLookup={runLookup} />
-              )}
+                      <Button
+                        variant="danger"
+                        onClick={() => setModal("block")}
+                        disabled={result.whitelist_status === "block"}
+                      >
+                        {result.whitelist_status === "block" ? "Blocked" : "Block"}
+                      </Button>
+                      <Button
+                        variant="safe"
+                        onClick={() => setModal("allow")}
+                        disabled={result.whitelist_status === "allow"}
+                      >
+                        {result.whitelist_status === "allow" ? "Allowed" : "Allow"}
+                      </Button>
+                      <div style={{ flex: 1 }} />
+                      <Button variant="secondary" onClick={() => setModal("rule")}>
+                        Create Alert Rule
+                      </Button>
+                      <Button variant="secondary" onClick={() => setModal("link")}>
+                        Link to Incident
+                      </Button>
+                      <Button variant="secondary" onClick={exportIndicatorCard}>
+                        Export indicator card
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <IntelDashboard feedInfo={feedInfo} onLookup={runLookup} />
+                )}
+              </div>
             </div>
           </div>
 

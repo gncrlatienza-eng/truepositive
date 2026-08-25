@@ -1,13 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { theme } from "../../styles/theme";
 import { Field, Select, TextInput, OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { createSource } from "../../api/sources";
+import { getAgent } from "../../api/agents";
 import LocalSourcePicker from "../settings/LocalSourcePicker";
 
 export default function OnboardingStep3({ onBack, agentId, platform = "windows" }) {
   const navigate = useNavigate();
   const [mode, setMode] = useState("local");
+  // Real capability status for the "Needs Administrator"/"Requires Sysmon"
+  // badges (see LocalSourcePicker) — fetched once here rather than
+  // threaded through OnboardingPage's state, since Step 2 already
+  // guarantees agentId is a real, at-least-pending agent by the time this
+  // step is reachable. Stays null (falls back to static badges) if the
+  // agent hasn't heartbeated with a capability value yet.
+  const [agentCapabilities, setAgentCapabilities] = useState(null);
+
+  useEffect(() => {
+    if (!agentId) return;
+    getAgent(agentId)
+      .then((agent) =>
+        setAgentCapabilities({
+          event_log_reader_member: agent.event_log_reader_member,
+          sysmon_installed: agent.sysmon_installed,
+        }),
+      )
+      .catch(() => {});
+  }, [agentId]);
   const [remote, setRemote] = useState({
     protocol: "ssh",
     host: "",
@@ -181,7 +201,12 @@ export default function OnboardingStep3({ onBack, agentId, platform = "windows" 
             marginBottom: theme.space[5],
           }}
         >
-          <LocalSourcePicker key={platform} platform={platform} onChange={setLocalSources} />
+          <LocalSourcePicker
+            key={platform}
+            platform={platform}
+            agentCapabilities={agentCapabilities}
+            onChange={setLocalSources}
+          />
         </div>
       )}
 

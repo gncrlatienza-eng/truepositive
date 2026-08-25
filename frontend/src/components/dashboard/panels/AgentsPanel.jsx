@@ -39,6 +39,7 @@ export default function AgentsPanel({ data, onSetPrimary }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{a.name}</div>
                     {a.is_primary && <Badge color={theme.color.accent}>Primary</Badge>}
+                    {a.is_relay_child && <Badge color={theme.color.textMuted}>Relay child</Badge>}
                   </div>
                   <div style={{ fontSize: 12, color: theme.color.textFaint }}>
                     {a.hostname || "not registered yet"}
@@ -51,7 +52,7 @@ export default function AgentsPanel({ data, onSetPrimary }) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                   <Badge color={STATUS_COLORS[a.status]}>{a.status}</Badge>
-                  {!a.is_primary && onSetPrimary && (
+                  {!a.is_primary && !a.is_relay_child && onSetPrimary && (
                     <button
                       type="button"
                       onClick={() => onSetPrimary(a.id)}

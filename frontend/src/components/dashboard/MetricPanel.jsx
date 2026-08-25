@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { theme } from "../../styles/theme";
 import * as dashboardApi from "../../api/dashboard";
 import { setPrimaryAgent } from "../../api/agents";
+import { useScope } from "../../context/ScopeContext";
 import CriticalPanel from "./panels/CriticalPanel";
 import IngestionPanel from "./panels/IngestionPanel";
 import EventsPanel from "./panels/EventsPanel";
@@ -23,27 +24,28 @@ const STATIC_TITLES = {
   agents: "Agents",
 };
 
-function fetchPanel(panel, timeWindow) {
+function fetchPanel(panel, timeWindow, agentId) {
   switch (panel.type) {
     case "critical":
-      return dashboardApi.getCriticalPanel();
+      return dashboardApi.getCriticalPanel(agentId);
     case "ingestion":
-      return dashboardApi.getIngestionPanel(timeWindow);
+      return dashboardApi.getIngestionPanel(timeWindow, agentId);
     case "events":
-      return dashboardApi.getEventsPanel(timeWindow);
+      return dashboardApi.getEventsPanel(timeWindow, agentId);
     case "alerts":
-      return dashboardApi.getAlertsPanel();
+      return dashboardApi.getAlertsPanel(agentId);
     case "triage":
-      return dashboardApi.getTriagePanel();
+      return dashboardApi.getTriagePanel(agentId);
     case "risk":
-      return dashboardApi.getRiskPanel();
+      return dashboardApi.getRiskPanel(agentId);
     case "severity":
-      return dashboardApi.getSeverityPanel(panel.key);
+      return dashboardApi.getSeverityPanel(panel.key, agentId);
     case "rule":
-      return dashboardApi.getRulePanel(panel.key);
+      return dashboardApi.getRulePanel(panel.key, agentId);
     case "eventType":
-      return dashboardApi.getEventTypePanel(panel.key);
+      return dashboardApi.getEventTypePanel(panel.key, agentId);
     case "agents":
+      // Deliberately unscoped — see api/dashboard.js's getAgentsPanel comment.
       return dashboardApi.getAgentsPanel(timeWindow);
     default:
       return Promise.resolve(null);
@@ -79,6 +81,8 @@ export default function MetricPanel({ panel, timeWindow, onClose }) {
 }
 
 function PanelDrawer({ panel, timeWindow, onClose }) {
+  const { scope, refreshAgents } = useScope();
+  const scopedAgentId = scope.mode === "agent" ? scope.agentId : undefined;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -95,7 +99,7 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
     let cancelled = false;
     setLoading(true);
     setError(false);
-    fetchPanel(panel, timeWindow)
+    fetchPanel(panel, timeWindow, scopedAgentId)
       .then((result) => {
         if (!cancelled) setData(result);
       })
@@ -108,7 +112,7 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [panel, timeWindow]);
+  }, [panel, timeWindow, scopedAgentId]);
 
   // Every other panel type is a point-in-time snapshot the user reads once,
   // but "agents" reflects live connect/disconnect status (see
@@ -129,9 +133,16 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
   // Owned here (not inside AgentsPanel) so the panel component stays a pure
   // presentational component like every other panel in this file — the
   // mutation + refetch-to-reflect-the-new-single-primary lives with the
-  // rest of this drawer's data-fetching logic instead.
+  // rest of this drawer's data-fetching logic instead. Also refreshes
+  // ScopeContext's own agent list (not just this drawer's local `data`) —
+  // otherwise the newly-primary agent only becomes a "hub" as far as the
+  // Scope Switcher is concerned once something else happens to call
+  // refreshAgents (e.g. deploying another device), leaving the switcher
+  // absent right after the exact action that should make it appear.
   function handleSetPrimary(agentId) {
-    return setPrimaryAgent(agentId).then(() => dashboardApi.getAgentsPanel(timeWindow).then(setData));
+    return setPrimaryAgent(agentId).then(() =>
+      Promise.all([dashboardApi.getAgentsPanel(timeWindow).then(setData), refreshAgents()])
+    );
   }
 
   return (

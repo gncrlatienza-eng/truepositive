@@ -94,6 +94,54 @@ def test_list_alerts_filters(client, auth_headers, db_session):
     assert critical_only["items"][0]["title"] == "resolved-one"
 
 
+def test_list_alerts_filters_by_agent_id(client, auth_headers):
+    # Alert has no agent_id of its own -- this exercises the join-through-Log
+    # path that backs the dashboard's Scope Switcher for per-device alerts.
+    _create_rule(client, auth_headers, conditions={"min_severity": "high"})
+
+    def _create_agent(name):
+        response = client.post("/agents", json={"name": name, "platform": "windows"}, headers=auth_headers)
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    def _ship_triggering_log(agent, message):
+        agent_id, key = agent["agent"]["id"], agent["enrollment_key"]
+        source = client.post(
+            "/logs/sources",
+            json={"name": "s", "type": "local", "agent_id": agent_id, "path": "Security"},
+            headers=auth_headers,
+        ).json()
+        response = client.post(
+            f"/agents/{agent_id}/logs",
+            json={
+                "logs": [
+                    {
+                        "source_id": source["id"],
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "severity": "high",
+                        "event_type": "x",
+                        "message": message,
+                        "raw": {},
+                    }
+                ]
+            },
+            headers={"X-Agent-Key": key},
+        )
+        assert response.status_code == 200, response.text
+
+    first = _create_agent("dc-01")
+    second = _create_agent("dc-02")
+    _ship_triggering_log(first, "from-first")
+    _ship_triggering_log(second, "from-second")
+
+    scoped = client.get("/alerts", params={"agent_id": first["agent"]["id"]}, headers=auth_headers).json()
+    assert scoped["total"] == 1
+    assert scoped["items"][0]["description"] == "from-first"
+
+    all_alerts = client.get("/alerts", headers=auth_headers).json()
+    assert all_alerts["total"] == 2
+
+
 def test_ack_escalate_resolve_transitions(client, auth_headers, db_session):
     org_id = _org_id(client, auth_headers)
     alert = Alert(org_id=org_id, severity=Severity.HIGH, status=AlertStatus.OPEN, title="t")
@@ -173,6 +221,45 @@ def test_list_alerts_search_and_log_id_filter(client, auth_headers, db_session):
     by_log_id = client.get("/alerts", params={"log_id": log_b.id}, headers=auth_headers).json()
     assert by_log_id["total"] == 1
     assert by_log_id["items"][0]["title"] == "Port scan detected"
+
+
+def test_create_manual_alert_from_log(client, auth_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    now = datetime.now(UTC)
+    log = Log(org_id=org_id, timestamp=now, severity=Severity.MEDIUM, event_type="x", message="suspicious thing")
+    db_session.add(log)
+    db_session.flush()
+
+    r = client.post(
+        "/alerts",
+        json={"title": "Manually escalated log", "severity": "high", "log_id": log.id},
+        headers=auth_headers,
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["title"] == "Manually escalated log"
+    assert body["severity"] == "high"
+    assert body["status"] == "open"
+    assert body["rule_id"] is None
+    assert body["log_id"] == log.id
+
+
+def test_create_manual_alert_without_log(client, auth_headers):
+    r = client.post("/alerts", json={"title": "No log yet", "severity": "medium"}, headers=auth_headers)
+    assert r.status_code == 201, r.text
+    assert r.json()["log_id"] is None
+
+
+def test_create_manual_alert_rejects_cross_org_log(client, auth_headers, second_org_headers, db_session):
+    other_org_id = _org_id(client, second_org_headers)
+    log = Log(org_id=other_org_id, timestamp=datetime.now(UTC), severity=Severity.HIGH, event_type="x", message="m")
+    db_session.add(log)
+    db_session.flush()
+
+    r = client.post(
+        "/alerts", json={"title": "t", "severity": "high", "log_id": log.id}, headers=auth_headers
+    )
+    assert r.status_code == 404
 
 
 def test_alerts_export_csv(client, auth_headers, db_session):

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { ScopeProvider } from "./context/ScopeContext";
 import { ToastProvider } from "./components/common/Toast";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
@@ -40,7 +41,9 @@ export default function App() {
             <Route
               element={
                 <ProtectedRoute>
-                  <AppShell />
+                  <ScopeProvider>
+                    <AppShell />
+                  </ScopeProvider>
                 </ProtectedRoute>
               }
             >

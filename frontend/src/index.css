@@ -10,8 +10,8 @@ body,
 
 body {
   margin: 0;
-  background: #0d1117;
-  color: #e6edf3;
+  background: #0f0f0f;
+  color: #ffffff;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-weight: 400;
   font-size: 16px;
@@ -27,7 +27,7 @@ body {
    per-component since every one of them just uses plain `overflow: auto`. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #30363d transparent;
+  scrollbar-color: #262626 transparent;
 }
 
 *::-webkit-scrollbar {
@@ -40,14 +40,14 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #30363d;
+  background: #262626;
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #484f58;
+  background: #666666;
   background-clip: padding-box;
 }
 
@@ -72,6 +72,16 @@ a {
   color: inherit;
 }
 
+/* Plain-text link used by LandingPage.jsx's secondary hero CTA -- no
+   border/box, just text that underlines on hover (as opposed to .tp-btn's
+   pill-shaped bordered buttons). */
+.tp-link-hover-underline {
+  text-decoration: none;
+}
+.tp-link-hover-underline:hover {
+  text-decoration: underline;
+}
+
 /* Shared form + button chrome (frontend/src/components/auth/fields.jsx) */
 
 .tp-input {
@@ -79,9 +89,9 @@ a {
   box-sizing: border-box;
   padding: 15px 24px;
   border-radius: 999px;
-  border: 1px solid #30363d;
-  background: #21262d;
-  color: #e6edf3;
+  border: 1px solid #262626;
+  background: #0f0f0f;
+  color: #ffffff;
   font-family: inherit;
   font-size: 16px;
   outline: none;
@@ -91,27 +101,27 @@ a {
 }
 
 .tp-input:focus {
-  border-color: #0890b1;
+  border-color: #00d4ff;
   box-shadow: 0 0 0 3px rgba(8, 144, 177, 0.18);
 }
 
 .tp-input::placeholder {
-  color: #484f58;
+  color: #666666;
 }
 
 select.tp-input {
   appearance: none;
   -webkit-appearance: none;
   padding-right: 44px;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%238b949e'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23999999'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 20px center;
   background-size: 18px;
 }
 
 select.tp-input option {
-  background: #21262d;
-  color: #e6edf3;
+  background: #0f0f0f;
+  color: #ffffff;
 }
 
 /* Was just `accent-color` on the native control — renders as each OS's own
@@ -125,8 +135,8 @@ input[type="checkbox"] {
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  border: 1px solid #30363d;
-  background: #21262d;
+  border: 1px solid #262626;
+  background: #0f0f0f;
   cursor: pointer;
   position: relative;
   flex-shrink: 0;
@@ -136,12 +146,12 @@ input[type="checkbox"] {
 }
 
 input[type="checkbox"]:hover {
-  border-color: #484f58;
+  border-color: #333333;
 }
 
 input[type="checkbox"]:checked {
-  background: #0890b1;
-  border-color: #0890b1;
+  background: #00d4ff;
+  border-color: #00d4ff;
 }
 
 input[type="checkbox"]:checked::after {
@@ -190,23 +200,23 @@ input[type="checkbox"]:focus-visible {
 }
 
 .tp-btn-primary {
-  background: #0890b1;
+  background: #00d4ff;
   color: #ffffff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 .tp-btn-primary:hover:not(:disabled) {
-  background: #0ab0d8;
+  background: #33ddff;
 }
 
 .tp-btn-outline {
   background: transparent;
-  color: #e6edf3;
-  border-color: #30363d;
+  color: #ffffff;
+  border-color: #262626;
 }
 
 .tp-btn-outline:hover:not(:disabled) {
-  border-color: #0890b1;
+  border-color: #00d4ff;
   background: rgba(8, 144, 177, 0.08);
 }
 
@@ -220,6 +230,24 @@ input[type="checkbox"]:focus-visible {
 .tp-authmodal-shell {
   position: relative;
   min-height: 100vh;
+}
+
+.tp-authmodal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  filter: blur(20px);
+  transform: scale(1.06); /* hides the blur's soft edge fringe at the viewport border */
+  pointer-events: none;
+}
+
+.tp-authmodal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: rgba(10, 10, 10, 0.6);
+  pointer-events: none;
 }
 
 .tp-authmodal-topbar {
@@ -254,8 +282,8 @@ input[type="checkbox"]:focus-visible {
   max-width: 560px;
   max-height: 85vh;
   overflow: hidden;
-  background: #161b22;
-  border: 1px solid #30363d;
+  background: #141414;
+  border: 1px solid #262626;
   border-radius: 14px;
   box-sizing: border-box;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
@@ -291,16 +319,16 @@ input[type="checkbox"]:focus-visible {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: #8b949e;
+  color: #999999;
   font-size: 18px;
   text-decoration: none;
   line-height: 1;
-  background: #161b22;
+  background: #141414;
 }
 
 .tp-authmodal-close:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #e6edf3;
+  color: #ffffff;
 }
 
 @media (max-width: 480px) {
@@ -321,7 +349,7 @@ input[type="checkbox"]:focus-visible {
   flex-wrap: wrap;
   gap: 16px;
   padding: 16px 32px;
-  border-bottom: 1px solid #30363d;
+  border-bottom: 1px solid #262626;
 }
 
 .tp-onboarding-body {
@@ -435,7 +463,7 @@ input[type="checkbox"]:focus-visible {
   pointer-events: none;
   z-index: 30;
   background: rgba(13, 17, 23, 0.95);
-  border: 1px solid #30363d;
+  border: 1px solid #262626;
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 11px;
@@ -446,11 +474,11 @@ input[type="checkbox"]:focus-visible {
 }
 
 .tp-chart-tooltip-title {
-  color: #8b949e;
+  color: #999999;
 }
 
 .tp-chart-tooltip-line {
-  color: #e6edf3;
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -524,7 +552,7 @@ input[type="checkbox"]:focus-visible {
   border-radius: 3px;
   flex-shrink: 0;
   cursor: pointer;
-  background: var(--tp-legend-color, #8b949e);
+  background: var(--tp-legend-color, #999999);
   transition:
     transform 120ms ease,
     opacity 120ms ease;
@@ -538,12 +566,12 @@ input[type="checkbox"]:focus-visible {
    as an unchecked checkbox, still tinted with the slice's own color. */
 .tp-legend-checkbox[aria-checked="false"] {
   background: transparent;
-  box-shadow: inset 0 0 0 2px var(--tp-legend-color, #8b949e);
+  box-shadow: inset 0 0 0 2px var(--tp-legend-color, #999999);
   opacity: 0.6;
 }
 
 .tp-legend-label {
-  color: #8b949e;
+  color: #999999;
   flex: 1;
 }
 
@@ -553,7 +581,7 @@ input[type="checkbox"]:focus-visible {
 
 .tp-legend-label.clickable:hover {
   text-decoration: underline;
-  color: #e6edf3;
+  color: #ffffff;
 }
 
 /* Plain-English metric explanations (frontend/src/components/common/InfoTooltip.jsx) */
@@ -578,8 +606,8 @@ input[type="checkbox"]:focus-visible {
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  border: 1px solid #484f58;
-  color: #8b949e;
+  border: 1px solid #333333;
+  color: #999999;
   font-size: 10px;
   font-weight: 600;
   font-family: inherit;
@@ -593,14 +621,14 @@ input[type="checkbox"]:focus-visible {
   left: 50%;
   transform: translateX(-50%);
   width: 220px;
-  background: #1c2128;
-  border: 1px solid #30363d;
+  background: #1a1a1a;
+  border: 1px solid #262626;
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
-  color: #e6edf3;
+  color: #ffffff;
   text-transform: none;
   letter-spacing: normal;
   opacity: 0;
@@ -634,6 +662,42 @@ input[type="checkbox"]:focus-visible {
 
 .tp-pulse-dot {
   animation: tp-pulse 1.8s ease-out infinite;
+}
+
+/* ScopeSwitcher's radial-menu FAB (see components/ScopeSwitcher.jsx) --
+   ported from reference/Scope Switcher.dc.html's own ringPulse keyframe.
+   Same idea as tp-pulse above (a color-mix ring that expands and fades) but
+   a distinct, larger-radius, slower-cadence variant sized for a 60px FAB
+   rather than a small status dot -- kept separate rather than reusing
+   tp-pulse's own sizing, which would look wrong scaled up this far. */
+@keyframes tp-scope-fab-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--tp-pulse-color, #00d4ff) 35%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 22px color-mix(in srgb, var(--tp-pulse-color, #00d4ff) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--tp-pulse-color, #00d4ff) 0%, transparent);
+  }
+}
+
+.tp-scope-fab-pulse {
+  animation: tp-scope-fab-pulse 2.8s ease-out infinite;
+}
+
+/* One-shot glow for LandingPage's closing CTA card, triggered once via
+   IntersectionObserver when it scrolls into view (see usePulseOnView in
+   LandingPage.jsx) -- distinct from tp-pulse above, which is a small,
+   infinitely-repeating status-dot indicator, not a one-shot card-sized glow. */
+@keyframes tp-cta-pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 212, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 18px rgba(0, 212, 255, 0);
+  }
 }
 
 @keyframes tp-kpi-flash {
@@ -671,13 +735,13 @@ input[type="checkbox"]:focus-visible {
 }
 
 .tp-btn2-primary:hover:not(:disabled) {
-  background: #0ab0d8;
+  background: #33ddff;
 }
 
 .tp-btn2-secondary:hover:not(:disabled) {
-  border-color: #484f58;
-  color: #e6edf3;
-  background: #1c2128;
+  border-color: #333333;
+  color: #ffffff;
+  background: #1a1a1a;
 }
 
 .tp-btn2-danger:hover:not(:disabled) {
@@ -693,9 +757,9 @@ input[type="checkbox"]:focus-visible {
   box-sizing: border-box;
   padding: 9px 12px;
   border-radius: 6px;
-  border: 1px solid #30363d;
-  background: #21262d;
-  color: #e6edf3;
+  border: 1px solid #262626;
+  background: #0f0f0f;
+  color: #ffffff;
   font-family: inherit;
   font-size: 13px;
   outline: none;
@@ -705,27 +769,27 @@ input[type="checkbox"]:focus-visible {
 }
 
 select.tp-field-input {
-  background: #21262d;
-  border-color: #30363d;
+  background: #0f0f0f;
+  border-color: #262626;
 }
 
 select.tp-field-input:hover {
-  border-color: #484f58;
+  border-color: #333333;
 }
 
 .tp-field-input:focus {
-  border-color: #0890b1;
+  border-color: #00d4ff;
   box-shadow: 0 0 0 3px rgba(8, 144, 177, 0.18);
 }
 
 .tp-field-input::placeholder {
-  color: #484f58;
+  color: #666666;
 }
 
 .tp-card {
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-left: 1px solid #30363d;
+  background: #141414;
+  border: 1px solid #262626;
+  border-left: 1px solid #262626;
   border-radius: 8px;
   transition: box-shadow 150ms ease;
 }
@@ -757,8 +821,8 @@ select.tp-field-input:hover {
    fighting an inline `border` shorthand, which would otherwise always win
    over a stylesheet class regardless of specificity. */
 .tp-kpi-card {
-  border: 1px solid #30363d;
-  border-left: 1px solid #30363d;
+  border: 1px solid #262626;
+  border-left: 1px solid #262626;
   transition:
     box-shadow 150ms ease,
     transform 150ms ease;
@@ -808,8 +872,8 @@ select.tp-field-input:hover {
    resolve to a flat solid + hairline border, no backdrop-filter, no
    translucency, matching every other card/panel in the app. */
 .tp-glass {
-  background: #1c2128;
-  border: 1px solid #30363d;
+  background: #1a1a1a;
+  border: 1px solid #262626;
   box-shadow: none;
 }
 
@@ -820,8 +884,8 @@ select.tp-field-input:hover {
 /* Subtle variant — for topbar chrome (org badge, search box) that's this
    surface *at rest*, all the time, not just when active/selected. */
 .tp-glass-subtle {
-  background: #161b22;
-  border: 1px solid #30363d;
+  background: #141414;
+  border: 1px solid #262626;
   box-shadow: none;
 }
 
@@ -866,7 +930,7 @@ select.tp-field-input:hover {
 
 .tp-panel-close:hover {
   transform: scale(1.1);
-  color: #e6edf3;
+  color: #ffffff;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -890,12 +954,12 @@ select.tp-field-input:hover {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #8b949e;
+  color: #999999;
   padding: 12px 14px;
-  border-bottom: 1px solid #30363d;
+  border-bottom: 1px solid #262626;
   /* Solid, not translucent — position: sticky needs an opaque background
      or scrolled-past rows show through it. */
-  background: #161b22;
+  background: #141414;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -908,12 +972,12 @@ select.tp-field-input:hover {
 }
 
 .tp-table th[data-sortable="true"]:hover {
-  color: #e6edf3;
+  color: #ffffff;
 }
 
 .tp-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid #30363d;
+  border-bottom: 1px solid #262626;
   vertical-align: middle;
 }
 
@@ -941,13 +1005,13 @@ select.tp-field-input:hover {
 .tp-toast {
   /* Flat, not frosted — keeps the left-edge status color (set by
      .tp-toast-info/-success/-error below) as the one legitimate color cue. */
-  background: #1c2128;
-  border: 1px solid #30363d;
+  background: #1a1a1a;
+  border: 1px solid #262626;
   border-left-width: 3px;
   border-radius: 8px;
   padding: 12px 16px;
   font-size: 14px;
-  color: #e6edf3;
+  color: #ffffff;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   animation: tp-pop 0.15s ease;
   min-width: 240px;
@@ -955,7 +1019,7 @@ select.tp-field-input:hover {
 }
 
 .tp-toast-info {
-  border-left-color: #0890b1;
+  border-left-color: #00d4ff;
 }
 
 .tp-toast-success {
@@ -1023,13 +1087,13 @@ select.tp-field-input:hover {
 .tp-events-stat-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  border-top: 1px solid #30363d;
+  border-top: 1px solid #262626;
   margin-top: 12px;
 }
 
 .tp-events-stat-cell {
   padding: 18px 24px;
-  border-right: 1px solid #30363d;
+  border-right: 1px solid #262626;
 }
 
 .tp-events-stat-cell:last-child {
@@ -1049,6 +1113,256 @@ select.tp-field-input:hover {
 
   /* Add a bottom border between the two rows in 2-col mode */
   .tp-events-stat-cell:nth-child(-n + 2) {
-    border-bottom: 1px solid #30363d;
+    border-bottom: 1px solid #262626;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LANDING PAGE spacing/layout polish (2026-08-22, later same day)
+   Inline styles can't respond to @media, so any padding/grid value that
+   needs to change at a breakpoint was pulled out of LandingPage.jsx's
+   inline style objects into these classes; everything else (colors,
+   reveal-animation transforms/opacity, one-off values) stays inline as
+   before. Breakpoints reuse the app's existing 860/620/560/480 set rather
+   than inventing new ones.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Shared horizontal gutter for every landing section. Section-specific
+   paddingTop/paddingBottom stay inline in LandingPage.jsx (unchanged
+   per section) -- only left/right live here. */
+.tp-landing-section {
+  padding-left: 80px;
+  padding-right: 80px;
+}
+@media (max-width: 860px) {
+  .tp-landing-section {
+    padding-left: 56px;
+    padding-right: 56px;
+  }
+}
+@media (max-width: 620px) {
+  .tp-landing-section {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+@media (max-width: 480px) {
+  .tp-landing-section {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* Hero stats row: kept in one row (nowrap) down through tablet widths --
+   previously an unconstrained flex-wrap let individual stat blocks wrap
+   one-per-line at mid widths, reading as a vertical stack well before the
+   hero itself stacks at 861px. Gap shrinks at 620px so 3 stats keep
+   fitting; only the narrowest phone widths (480px) fall back to wrapping,
+   where 3 side-by-side stats genuinely can't fit without truncating. */
+.tp-landing-hero-stats {
+  gap: 44px;
+  flex-wrap: nowrap;
+}
+@media (max-width: 620px) {
+  .tp-landing-hero-stats {
+    gap: 24px;
+  }
+}
+@media (max-width: 480px) {
+  .tp-landing-hero-stats {
+    flex-wrap: wrap;
+  }
+}
+
+/* MiniDashboard (LandingPage.jsx) pane switch: the content div is remounted
+   (via a key tied to the active tab/alert) on every sidebar click, so this
+   animation replays each time instead of the old instant, jarring swap. */
+@keyframes tp-mini-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.tp-mini-pane-enter {
+  animation: tp-mini-fade 0.3s ease-out;
+}
+
+/* Header nav links: hidden below tablet width. Logo + 2 links + 2 auth
+   buttons in one flex row doesn't fit at phone widths; both links are
+   duplicated in the footer so nothing becomes unreachable. */
+.tp-landing-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+@media (max-width: 620px) {
+  .tp-landing-header-nav {
+    display: none;
+  }
+}
+
+/* Timeline row (How it works): alternating left/right 3-col grid on
+   desktop, collapses to one stacked column below 560px. Per-step text
+   keeps its left/right text-align even when stacked (an accepted, minor
+   cosmetic trade-off vs. reworking the alternation for mobile). */
+.tp-landing-timeline-row {
+  display: grid;
+  grid-template-columns: 1fr 40px 1fr;
+  align-items: start;
+}
+@media (max-width: 560px) {
+  .tp-landing-timeline-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Features grid: 4 cols desktop -> 2 tablet -> 1 phone. The existing
+   span:true bento cards (FEATURES / FeatureCard in LandingPage.jsx) keep
+   requesting grid-column: span 2, which browsers clamp automatically at
+   fewer columns, so the bento layout needs no JS change to keep working. */
+.tp-landing-features-grid {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 28px;
+}
+@media (max-width: 860px) {
+  .tp-landing-features-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+  }
+}
+@media (max-width: 560px) {
+  .tp-landing-features-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+/* Bento-span feature cards (FEATURES[].span in LandingPage.jsx): span 2
+   columns at 4-col and 2-col grid widths (full-width in the 2-col case),
+   but MUST drop back to span 1 once the grid itself collapses to a single
+   explicit column -- otherwise "span 2" creates an unwanted implicit
+   second column (grid-auto-columns) and garbles every card placed after
+   it. This has to live in CSS (not inline gridColumn on the card) because
+   inline styles can't be overridden by a later @media rule. */
+.tp-landing-feature-card-span {
+  grid-column: span 2;
+}
+@media (max-width: 560px) {
+  .tp-landing-feature-card-span {
+    grid-column: span 1;
+  }
+}
+
+/* CTA band's inner card: generous desktop padding, pulled back at
+   narrower widths so copy + button don't crowd the card's own border. */
+.tp-landing-cta-card {
+  padding: 72px 64px;
+}
+@media (max-width: 620px) {
+  .tp-landing-cta-card {
+    padding: 48px 32px;
+  }
+}
+@media (max-width: 480px) {
+  .tp-landing-cta-card {
+    padding: 36px 20px;
+  }
+}
+
+/* Log detail modal (frontend/src/components/logs/LogDetailModal.jsx) —
+   staggered field/card reveal reuses tp-mini-fade's timing via an inline
+   animation-delay per item (see LogDetailModal/LogIntelPanel), so no new
+   "stagger" keyframe is needed here, just the shimmer for in-flight intel
+   lookups and a settle-in for each card once its result actually lands. */
+
+@keyframes tp-shimmer {
+  0% {
+    background-position: -160% 0;
+  }
+  100% {
+    background-position: 160% 0;
+  }
+}
+
+.tp-intel-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--tp-skeleton-base, #1a1a1a) 25%,
+    var(--tp-skeleton-hi, #262626) 50%,
+    var(--tp-skeleton-base, #1a1a1a) 75%
+  );
+  background-size: 200% 100%;
+  animation: tp-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes tp-intel-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tp-intel-card-in {
+  animation: tp-intel-card-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.tp-copy-btn {
+  transition:
+    color 120ms ease,
+    transform 120ms ease;
+}
+.tp-copy-btn:hover {
+  color: var(--tp-accent, #00d4ff);
+}
+.tp-copy-btn:active {
+  transform: scale(0.92);
+}
+
+@keyframes tp-copied-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(2px) scale(0.9);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tp-copied-badge {
+  animation: tp-copied-pop 0.25s ease-out both;
+}
+
+/* Sliding pill-selector indicator (frontend/src/pages/ReportsPage.jsx's
+   PillSelector) -- a positioned .tp-glass span whose left/width are set
+   inline per active option, this rule only owns the motion. */
+.tp-pill-indicator {
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tp-intel-skeleton,
+  .tp-intel-card-in,
+  .tp-copied-badge {
+    animation: none;
+  }
+
+  .tp-pill-indicator {
+    transition: none;
   }
 }

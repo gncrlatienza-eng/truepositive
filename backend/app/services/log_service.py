@@ -107,6 +107,7 @@ def _filtered_stmt(
     org_id: uuid.UUID,
     *,
     source_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None = None,
     severity: Severity | None,
     event_type: str | None,
     since: datetime | None,
@@ -116,6 +117,12 @@ def _filtered_stmt(
     stmt = select(Log).where(Log.org_id == org_id)
     if source_id is not None:
         stmt = stmt.where(Log.source_id == source_id)
+    if agent_id is not None:
+        # Backs the dashboard's Scope Switcher — narrows to one physical
+        # device's own logs, direct-connect or relay child alike (Log.agent_id
+        # always names the device that actually produced the log, never a
+        # relay hub — see relay_service.py's identity-preservation guarantee).
+        stmt = stmt.where(Log.agent_id == agent_id)
     if severity is not None:
         stmt = stmt.where(Log.severity == severity)
     if event_type is not None:
@@ -135,6 +142,7 @@ def list_logs(
     org_id: uuid.UUID,
     *,
     source_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
     severity: Severity | None = None,
     event_type: str | None = None,
     since: datetime | None = None,
@@ -146,7 +154,14 @@ def list_logs(
 ) -> tuple[list[Log], int]:
     limit = min(limit, MAX_LIMIT)
     stmt = _filtered_stmt(
-        org_id, source_id=source_id, severity=severity, event_type=event_type, since=since, until=until, q=q
+        org_id,
+        source_id=source_id,
+        agent_id=agent_id,
+        severity=severity,
+        event_type=event_type,
+        since=since,
+        until=until,
+        q=q,
     )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     order = Log.timestamp.desc() if sort == "timestamp_desc" else Log.timestamp.asc()
@@ -166,6 +181,7 @@ def export_logs_csv(
     org_id: uuid.UUID,
     *,
     source_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
     severity: Severity | None = None,
     event_type: str | None = None,
     since: datetime | None = None,
@@ -173,7 +189,14 @@ def export_logs_csv(
     q: str | None = None,
 ) -> str:
     stmt = _filtered_stmt(
-        org_id, source_id=source_id, severity=severity, event_type=event_type, since=since, until=until, q=q
+        org_id,
+        source_id=source_id,
+        agent_id=agent_id,
+        severity=severity,
+        event_type=event_type,
+        since=since,
+        until=until,
+        q=q,
     )
     rows = db.scalars(stmt.order_by(Log.timestamp.desc()).limit(CSV_EXPORT_CAP)).all()
 

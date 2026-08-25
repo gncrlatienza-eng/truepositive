@@ -6,18 +6,18 @@ export const wz = {
   // 2026-08-17: rebased alongside src/styles/theme.js's flat-design pass —
   // same GitHub-dark neutrals (was two different cyans: #06b6d4 here vs
   // #0891b2 in the global theme). 2026-08-18: accent re-synced again to
-  // match src/styles/theme.js's own switch to the logo's teal (#0890b1) —
+  // match src/styles/theme.js's own switch to the logo's teal (#00d4ff) —
   // kept as a separate object per the note above (still deliberately
   // scoped to onboarding only), just always meant to track the same value.
-  bg: "#0d1117",
-  sidebarBg: "#161b22",
-  activeBg: "#1c2128",
-  border: "#30363d",
-  borderLeft: "#484f58",
-  accent: "#0890b1",
-  accentHover: "#0ab0d8",
-  textPrimary: "#e6edf3",
-  textSecondary: "#8b949e",
+  bg: "#0f0f0f",
+  sidebarBg: "#141414",
+  activeBg: "#1a1a1a",
+  border: "#262626",
+  borderLeft: "#333333",
+  accent: "#00d4ff",
+  accentHover: "#33ddff",
+  textPrimary: "#ffffff",
+  textSecondary: "#999999",
   textMuted: "#8b8b8b",
   success: "#3fb950",
   error: "#f85149",

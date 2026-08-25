@@ -89,6 +89,7 @@ export default function OnboardingStep1({ onNext }) {
   const [orgName, setOrgName] = useState("");
   const [teamSize, setTeamSize] = useState(TEAM_SIZES[0]);
   const [slug, setSlug] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -128,6 +129,7 @@ export default function OnboardingStep1({ onNext }) {
         team_size: teamSize,
         workspace_slug: slug,
         agree_terms: agreeTerms,
+        invite_code: inviteCode.trim() || null,
       });
       onNext();
     } catch (err) {
@@ -371,6 +373,20 @@ export default function OnboardingStep1({ onNext }) {
               {slugError || "Lowercase, alphanumeric, hyphens. Permanent—cannot change."}
             </HelperText>
           </div>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <FieldLabel htmlFor="inviteCode">Invite code (if you have one)</FieldLabel>
+          <input
+            id="inviteCode"
+            className="tp-wizard-input"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            onFocus={() => setFocusedField("inviteCode")}
+            onBlur={() => setFocusedField(null)}
+            placeholder="Leave blank if you weren't given one"
+          />
+          <HelperText>Only required if whoever invited you set one up.</HelperText>
         </div>
 
         <div style={{ marginBottom: 40, display: "flex", gap: 8, alignItems: "flex-start" }}>

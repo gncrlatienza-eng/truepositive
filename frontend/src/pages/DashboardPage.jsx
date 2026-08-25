@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { theme } from "../styles/theme";
 import { getDashboardSummary } from "../api/dashboard";
+import { useScope } from "../context/ScopeContext";
 import { SetupLockOverlay } from "../components/common/SetupLockOverlay";
 import { CriticalActionStrip } from "../components/dashboard/CriticalActionStrip";
 import { StatusBanner } from "../components/dashboard/StatusBanner";
@@ -47,6 +48,8 @@ const KPI_PANEL_TYPES = {
 const REFRESH_INTERVAL_MS = 2_000;
 
 export default function DashboardPage() {
+  const { scope } = useScope();
+  const scopedAgentId = scope.mode === "agent" ? scope.agentId : undefined;
   const [timeWindow, setTimeWindow] = useState("24h");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,7 +58,7 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getDashboardSummary(timeWindow)
+    getDashboardSummary(timeWindow, scopedAgentId)
       .then((data) => {
         if (!cancelled) setSummary(data);
       })
@@ -66,7 +69,7 @@ export default function DashboardPage() {
     // Silent background refresh — no loading spinner, no flash beyond the
     // per-KPI update highlight (see KpiCard's flash-on-change).
     const interval = setInterval(() => {
-      getDashboardSummary(timeWindow)
+      getDashboardSummary(timeWindow, scopedAgentId)
         .then((data) => {
           if (!cancelled) setSummary(data);
         })
@@ -77,7 +80,7 @@ export default function DashboardPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [timeWindow]);
+  }, [timeWindow, scopedAgentId]);
 
   if (loading && !summary) {
     return (

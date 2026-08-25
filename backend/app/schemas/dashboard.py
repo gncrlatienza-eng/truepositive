@@ -191,6 +191,7 @@ class AgentPanelRow(BaseModel):
     hostname: str | None
     last_seen_at: datetime | None
     is_primary: bool
+    is_relay_child: bool
     event_count: int
     alert_count: int
 

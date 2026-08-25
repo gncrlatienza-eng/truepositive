@@ -6,6 +6,7 @@ import WhitelistTab from "../components/settings/WhitelistTab";
 import RulesTab from "../components/settings/RulesTab";
 import AutomationTab from "../components/settings/AutomationTab";
 import NetworkTab from "../components/settings/NetworkTab";
+import { PillSelector } from "../components/common/PillSelector";
 
 const TAB_IDS = ["sources", "rules", "whitelist", "automation", "network"];
 const TABS = [
@@ -26,7 +27,21 @@ export default function SettingsPage() {
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: theme.space[7], boxSizing: "border-box" }}>
+      {/* Sticky header + tab bar -- position: sticky needs an opaque
+          background or scrolled-past content shows through it (same
+          reasoning as .tp-table th in index.css / IntelPage's own sticky
+          search bar), plus a border to mark where the pinned area ends. */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+          background: theme.color.background,
+          padding: `${theme.space[7]}px ${theme.space[7]}px ${theme.space[5]}px`,
+          boxSizing: "border-box",
+          borderBottom: `1px solid ${theme.color.border}`,
+        }}
+      >
         <div
           style={{
             fontSize: 14,
@@ -41,36 +56,20 @@ export default function SettingsPage() {
         </div>
         <h1 style={{ fontSize: 34, letterSpacing: "-0.025em", margin: 0, marginBottom: theme.space[6] }}>Settings</h1>
 
-        <div style={{ display: "flex", gap: theme.space[2], marginBottom: theme.space[6] }}>
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              style={{
-                padding: "10px 20px",
-                borderRadius: theme.radius.md,
-                border: `1px solid ${tab === t.id ? theme.color.accent : theme.color.border}`,
-                background: tab === t.id ? "rgba(8, 144, 177, 0.1)" : "transparent",
-                color: theme.color.text,
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: 600,
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ fontSize: 14, color: theme.color.textMuted, marginBottom: theme.space[5] }}>
+        <PillSelector options={TABS.map((t) => ({ id: t.id, label: t.label }))} activeId={tab} onSelect={setTab} />
+        <div style={{ fontSize: 13, color: theme.color.textFaint, marginTop: theme.space[3] }}>
           Audit log tab arrives in a later sprint.
         </div>
+      </div>
 
-        {tab === "sources" && <SourcesTab />}
-        {tab === "rules" && <RulesTab />}
-        {tab === "whitelist" && <WhitelistTab />}
-        {tab === "automation" && <AutomationTab />}
-        {tab === "network" && <NetworkTab />}
+      <div style={{ padding: `${theme.space[5]}px ${theme.space[7]}px ${theme.space[7]}px`, boxSizing: "border-box" }}>
+        <div key={tab} className="tp-mini-pane-enter">
+          {tab === "sources" && <SourcesTab />}
+          {tab === "rules" && <RulesTab />}
+          {tab === "whitelist" && <WhitelistTab />}
+          {tab === "automation" && <AutomationTab />}
+          {tab === "network" && <NetworkTab />}
+        </div>
       </div>
     </div>
   );

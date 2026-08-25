@@ -21,12 +21,55 @@ function Badge({ color, children }) {
   );
 }
 
+// entry.needsAdmin -> capabilities.event_log_reader_member, entry.requiresSysmon
+// -> capabilities.sysmon_installed. Both catalog flags happen to gate on
+// exactly one real capability each today (see logSourceCatalog.js) — this
+// map is what ties a given entry to which capability field, if either ever
+// needs more than one prerequisite it can grow into a list per entry.
+const CAPABILITY_FOR_FLAG = { needsAdmin: "event_log_reader_member", requiresSysmon: "sysmon_installed" };
+
+// Real-status badge for a catalog entry with a prerequisite flag, once the
+// agent has actually reported a capability value (agent/tp_agent.py's
+// _check_capabilities, via the heartbeat) — replaces the flat static badge
+// below with what this specific agent observed, instead of a generic
+// "this source type usually needs X" label with no check behind it.
+function capabilityBadge(flagKey, capabilities) {
+  const capKey = CAPABILITY_FOR_FLAG[flagKey];
+  const value = capabilities ? capabilities[capKey] : null;
+  if (value === true) {
+    return (
+      <Badge color={theme.color.severity.ok}>
+        {flagKey === "needsAdmin" ? "Verified: you have access" : "Verified: installed"}
+      </Badge>
+    );
+  }
+  if (value === false) {
+    return (
+      <Badge color={theme.color.severity.high}>
+        {flagKey === "needsAdmin" ? "Will prompt for setup" : "Not installed — will prompt to install"}
+      </Badge>
+    );
+  }
+  return null;
+}
+
 // Named, checkbox-driven picker for local log sources — used by onboarding
 // step 3 and Settings -> "Connect data source" so people don't have to
 // already know the exact Windows Event Log channel name to get started.
 // Mount with a `key={platform}` at the call site so switching platforms
 // resets the selection instead of mixing stale entries from another catalog.
-export default function LocalSourcePicker({ platform = "windows", existingPaths = [], onChange }) {
+// `agentCapabilities` — the assigned agent's real, heartbeat-reported
+// {event_log_reader_member, sysmon_installed} (or null/undefined before its
+// first heartbeat, or when no agent is selected yet) — when present, swaps
+// the static "Needs Administrator"/"Requires Sysmon installed" badges below
+// for a real verified/not-yet status; falls back to the static badge
+// whenever a given value hasn't been reported.
+export default function LocalSourcePicker({
+  platform = "windows",
+  existingPaths = [],
+  agentCapabilities = null,
+  onChange,
+}) {
   const catalog = catalogForPlatform(platform);
   // Recommended-but-unmet-prerequisite sources (needs Administrator, needs
   // Sysmon installed) are shown and still explicitly selectable, but not
@@ -115,8 +158,14 @@ export default function LocalSourcePicker({ platform = "windows", existingPaths 
                 {entry.name}
                 {alreadyAdded && <Badge color={theme.color.severity.ok}>Already added</Badge>}
                 {!alreadyAdded && entry.recommended && <Badge color={theme.color.severity.ok}>Recommended</Badge>}
-                {entry.needsAdmin && <Badge color={theme.color.severity.medium}>Needs Administrator</Badge>}
-                {entry.requiresSysmon && <Badge color={theme.color.severity.high}>Requires Sysmon installed</Badge>}
+                {entry.needsAdmin &&
+                  (capabilityBadge("needsAdmin", agentCapabilities) || (
+                    <Badge color={theme.color.severity.medium}>Needs Administrator</Badge>
+                  ))}
+                {entry.requiresSysmon &&
+                  (capabilityBadge("requiresSysmon", agentCapabilities) || (
+                    <Badge color={theme.color.severity.high}>Requires Sysmon installed</Badge>
+                  ))}
               </div>
               <div style={{ fontSize: 12, color: theme.color.textFaint, marginTop: 2 }}>{entry.description}</div>
               <div style={{ fontSize: 12, color: theme.color.textFaint, fontFamily: theme.font.mono, marginTop: 2 }}>

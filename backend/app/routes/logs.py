@@ -68,6 +68,7 @@ def delete_source(source_id: uuid.UUID, current_user: User = Depends(get_current
 def _log_filters(
     q: str | None,
     source_id: uuid.UUID | None,
+    agent_id: uuid.UUID | None,
     severity: Severity | None,
     event_type: str | None,
     since: datetime | None,
@@ -76,6 +77,7 @@ def _log_filters(
     return {
         "q": q,
         "source_id": source_id,
+        "agent_id": agent_id,
         "severity": severity,
         "event_type": event_type,
         "since": since,
@@ -87,6 +89,9 @@ def _log_filters(
 def list_logs(
     q: str | None = None,
     source_id: uuid.UUID | None = None,
+    # Backs the dashboard's Scope Switcher — narrows to one device's logs
+    # when a specific machine (not "All machines") is selected.
+    agent_id: uuid.UUID | None = None,
     severity: Severity | None = None,
     event_type: str | None = None,
     since: datetime | None = None,
@@ -100,7 +105,7 @@ def list_logs(
     logs, total = log_service.list_logs(
         db,
         current_user.org_id,
-        **_log_filters(q, source_id, severity, event_type, since, until),
+        **_log_filters(q, source_id, agent_id, severity, event_type, since, until),
         sort=sort,
         limit=limit,
         offset=offset,
@@ -115,6 +120,7 @@ def list_logs(
 def export_logs(
     q: str | None = None,
     source_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
     severity: Severity | None = None,
     event_type: str | None = None,
     since: datetime | None = None,
@@ -123,7 +129,7 @@ def export_logs(
     db: Session = Depends(get_db),
 ):
     csv_text = log_service.export_logs_csv(
-        db, current_user.org_id, **_log_filters(q, source_id, severity, event_type, since, until)
+        db, current_user.org_id, **_log_filters(q, source_id, agent_id, severity, event_type, since, until)
     )
     return Response(
         content=csv_text,

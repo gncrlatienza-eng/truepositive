@@ -15,23 +15,32 @@
 // instead of two different ones.
 //
 // 2026-08-18: accent recolored from the interim GitHub-blue (#1f6feb) to
-// the real brand mark's own teal — sampled directly from the "P" in
-// reference/tp_logo.png (RGB 8,144,177 = #0890b1), the exact same source
-// the logo/favicon assets were generated from, so the accent and the logo
-// are provably the same color rather than a hand-matched guess.
+// the real brand mark's own teal (#0890b1), sampled from reference/tp_logo.png.
+//
+// 2026-08-22: full recolor to match reference/"TruePositive Redesign.dc (1).html"
+// (the new public landing page mockup) — applied app-wide per explicit user
+// request, not just the landing page. True near-black background (#0f0f0f,
+// vs. the prior GitHub-dark #0d1117) and a brighter cyan accent (#00d4ff).
+// input is deliberately the SAME value as background (not a lighter/raised
+// tone) — the mockup insets form fields below their containing surface and
+// relies on the border alone for definition; matched here rather than
+// picking a new value with no source. textFaint and borderStrong were
+// previously the same hex by coincidence (#484f58 did double duty) — the
+// mockup actually uses two distinct grays for those two jobs, so they're
+// real, separate values now.
 export const theme = {
   color: {
-    background: "#0d1117",
-    surface: "#161b22",
-    raised: "#1c2128",
-    input: "#21262d",
-    border: "#30363d",
-    borderStrong: "#484f58",
-    accent: "#0890b1",
-    accentHover: "#0ab0d8",
-    text: "#e6edf3",
-    textMuted: "#8b949e",
-    textFaint: "#484f58",
+    background: "#0f0f0f",
+    surface: "#141414",
+    raised: "#1a1a1a",
+    input: "#0f0f0f",
+    border: "#262626",
+    borderStrong: "#333333",
+    accent: "#00d4ff",
+    accentHover: "#33ddff",
+    text: "#ffffff",
+    textMuted: "#999999",
+    textFaint: "#666666",
     severity: {
       critical: "#f85149",
       high: "#f0883e",

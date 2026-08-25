@@ -50,7 +50,9 @@ def _sweep_stale_batch(db: Session, agents: list[Agent]) -> None:
             agent.status = AgentStatus.DISCONNECTED
 
 
-def create_agent(db: Session, org_id: uuid.UUID, payload: AgentCreate) -> tuple[Agent, str]:
+def create_agent(
+    db: Session, org_id: uuid.UUID, payload: AgentCreate, *, relay_parent_agent_id: uuid.UUID | None = None
+) -> tuple[Agent, str]:
     raw_key = generate_agent_key()
     agent = Agent(
         org_id=org_id,
@@ -60,6 +62,10 @@ def create_agent(db: Session, org_id: uuid.UUID, payload: AgentCreate) -> tuple[
         agent_key_encrypted=encrypt_secret(raw_key),
         status=AgentStatus.PENDING,
         enrollment_expires_at=datetime.now(UTC) + ENROLLMENT_WINDOW,
+        # None for the overwhelming majority of agents (direct-connect,
+        # unchanged behavior). Set only by relay_service.create_relay_child,
+        # which has already validated the hub itself before calling here.
+        relay_parent_agent_id=relay_parent_agent_id,
     )
     db.add(agent)
     db.commit()
@@ -136,9 +142,24 @@ def register_agent(db: Session, agent: Agent, payload: AgentRegisterRequest) -> 
     return agent
 
 
-def heartbeat(db: Session, agent: Agent) -> Agent:
+def heartbeat(
+    db: Session,
+    agent: Agent,
+    *,
+    event_log_reader_member: bool | None = None,
+    sysmon_installed: bool | None = None,
+) -> Agent:
     agent.last_seen_at = datetime.now(UTC)
     agent.status = AgentStatus.CONNECTED
+    # Only overwrite when this heartbeat actually reported a value — a
+    # relay-mode or non-Windows heartbeat that doesn't send these shouldn't
+    # blow away a real value a previous direct heartbeat already recorded.
+    if event_log_reader_member is not None or sysmon_installed is not None:
+        if event_log_reader_member is not None:
+            agent.event_log_reader_member = event_log_reader_member
+        if sysmon_installed is not None:
+            agent.sysmon_installed = sysmon_installed
+        agent.capabilities_checked_at = datetime.now(UTC)
     db.commit()
     db.refresh(agent)
     return agent

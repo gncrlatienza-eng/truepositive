@@ -168,12 +168,12 @@ def update_incident(
             actor_id=actor_id,
             detail=f"{old_status} → {new_status}",
         )
-        if data["status"] == IncidentStatus.RESOLVED:
+        if data["status"] in (IncidentStatus.RESOLVED, IncidentStatus.FALSE_POSITIVE):
             from datetime import UTC, datetime
 
             inc.resolved_at = datetime.now(UTC)
         elif inc.resolved_at is not None:
-            # Re-opened from resolved — clear resolved_at.
+            # Re-opened from resolved/false_positive — clear resolved_at.
             inc.resolved_at = None
 
     for field, value in data.items():

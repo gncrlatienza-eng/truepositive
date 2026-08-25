@@ -8,7 +8,7 @@ from app.models.alert import AlertStatus
 from app.models.common import Severity
 from app.models.user import User
 from app.schemas.alert_rules import AlertRuleCreate, AlertRuleOut, AlertRuleUpdate
-from app.schemas.alerts import AlertListResponse, AlertOut, AlertUpdate
+from app.schemas.alerts import AlertCreate, AlertListResponse, AlertOut, AlertUpdate
 from app.services import alert_rule_service, alert_service
 from app.utils.security import get_current_user
 
@@ -66,6 +66,9 @@ def list_alerts(
     rule_id: uuid.UUID | None = None,
     assignee_id: uuid.UUID | None = None,
     log_id: int | None = None,
+    # Backs the dashboard's Scope Switcher — narrows to one device's alerts
+    # when a specific machine (not "All machines") is selected.
+    agent_id: uuid.UUID | None = None,
     q: str | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -80,6 +83,7 @@ def list_alerts(
         rule_id=rule_id,
         assignee_id=assignee_id,
         log_id=log_id,
+        agent_id=agent_id,
         q=q,
         limit=limit,
         offset=offset,
@@ -87,6 +91,13 @@ def list_alerts(
     return AlertListResponse(
         items=[AlertOut.model_validate(a) for a in alerts], total=total, limit=limit, offset=offset
     )
+
+
+@router.post("", response_model=AlertOut, status_code=status.HTTP_201_CREATED)
+def create_alert(
+    payload: AlertCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    return alert_service.create_manual_alert(db, current_user.org_id, payload)
 
 
 # Literal path, registered ahead of the typed {alert_id} lookup below — same
@@ -98,6 +109,7 @@ def export_alerts(
     severity: Severity | None = None,
     rule_id: uuid.UUID | None = None,
     assignee_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
     q: str | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -109,6 +121,7 @@ def export_alerts(
         severity=severity,
         rule_id=rule_id,
         assignee_id=assignee_id,
+        agent_id=agent_id,
         q=q,
     )
     return Response(
