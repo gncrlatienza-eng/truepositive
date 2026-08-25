@@ -256,9 +256,7 @@ def test_create_manual_alert_rejects_cross_org_log(client, auth_headers, second_
     db_session.add(log)
     db_session.flush()
 
-    r = client.post(
-        "/alerts", json={"title": "t", "severity": "high", "log_id": log.id}, headers=auth_headers
-    )
+    r = client.post("/alerts", json={"title": "t", "severity": "high", "log_id": log.id}, headers=auth_headers)
     assert r.status_code == 404
 
 

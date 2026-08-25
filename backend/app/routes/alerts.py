@@ -94,9 +94,7 @@ def list_alerts(
 
 
 @router.post("", response_model=AlertOut, status_code=status.HTTP_201_CREATED)
-def create_alert(
-    payload: AlertCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def create_alert(payload: AlertCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return alert_service.create_manual_alert(db, current_user.org_id, payload)
 
 

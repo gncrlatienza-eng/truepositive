@@ -141,7 +141,7 @@ function PanelDrawer({ panel, timeWindow, onClose }) {
   // absent right after the exact action that should make it appear.
   function handleSetPrimary(agentId) {
     return setPrimaryAgent(agentId).then(() =>
-      Promise.all([dashboardApi.getAgentsPanel(timeWindow).then(setData), refreshAgents()])
+      Promise.all([dashboardApi.getAgentsPanel(timeWindow).then(setData), refreshAgents()]),
     );
   }
 
