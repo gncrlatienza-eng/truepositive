@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
+import { Braces, ChevronDown, ChevronRight, Laptop, ListFilter, Radar } from "lucide-react";
 import { theme } from "../../styles/theme";
 import { Badge, SeverityBadge } from "../common/Badge";
 import { Button } from "../common/Button";
+import { CollapsibleSection } from "../common/CollapsibleSection";
+import { CopyButton } from "../common/CopyButton";
 import Modal from "../common/Modal";
 import { EventGuide } from "../common/EventGuide";
+import { InfoTooltip } from "../common/InfoTooltip";
+import { LogIntelPanel } from "../logs/LogIntelPanel";
 import { getLog } from "../../api/logs";
+import { mitreTechniqueHelp, STATUS_HELP } from "../../data/mitreGlossary";
 import { formatTimestamp } from "../../utils/format";
 import { useAuth } from "../../context/AuthContext";
+import { useScope } from "../../context/ScopeContext";
 import { useToast } from "../common/Toast";
 import { listIncidents, linkAlert, createIncident } from "../../api/incidents";
 
@@ -34,10 +41,21 @@ function Field({ label, children }) {
   );
 }
 
-export default function AlertDetailModal({ open, onClose, alert, ruleName, eventType, onUpdate }) {
+export default function AlertDetailModal({
+  open,
+  onClose,
+  alert,
+  ruleName,
+  eventType,
+  mitreTechnique,
+  onUpdate,
+  onFilterByRule,
+}) {
   const { user } = useAuth();
+  const { agents, setScope } = useScope();
   const showToast = useToast();
   const [sourceLog, setSourceLog] = useState(null);
+  const [showIntel, setShowIntel] = useState(false);
 
   // Link-to-incident picker state
   const [showLinkPicker, setShowLinkPicker] = useState(false);
@@ -53,6 +71,7 @@ export default function AlertDetailModal({ open, onClose, alert, ruleName, event
     setSourceLog(null);
     setShowLinkPicker(false);
     setSelectedIncidentId("");
+    setShowIntel(false);
     if (open && alert?.log_id) {
       getLog(alert.log_id)
         .then(setSourceLog)
@@ -75,6 +94,21 @@ export default function AlertDetailModal({ open, onClose, alert, ruleName, event
 
   const isMine = alert.assignee_id === user?.id;
   const nextStatus = NEXT_STATUS[alert.status];
+  const device = sourceLog?.agent_id ? agents.find((a) => a.id === sourceLog.agent_id) : null;
+  const rawEntries = sourceLog?.raw && typeof sourceLog.raw === "object" ? Object.entries(sourceLog.raw) : [];
+  const rawText = rawEntries.length > 0 ? JSON.stringify(sourceLog.raw, null, 2) : null;
+
+  function handleViewDeviceAlerts() {
+    if (!device) return;
+    setScope({ mode: "agent", agentId: device.id });
+    onClose();
+  }
+
+  function handleViewRuleAlerts() {
+    if (!alert.rule_id || !onFilterByRule) return;
+    onFilterByRule(alert.rule_id);
+    onClose();
+  }
 
   async function handleLinkToExisting() {
     if (!selectedIncidentId) return;
@@ -107,7 +141,7 @@ export default function AlertDetailModal({ open, onClose, alert, ruleName, event
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={alert.title} width={640}>
+    <Modal open={open} onClose={onClose} title={alert.title} width={680}>
       <div
         style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: theme.space[4], marginBottom: theme.space[5] }}
       >
@@ -115,12 +149,35 @@ export default function AlertDetailModal({ open, onClose, alert, ruleName, event
           <SeverityBadge severity={alert.severity} />
         </Field>
         <Field label="Status">
-          <Badge color={STATUS_COLORS[alert.status]}>{alert.status}</Badge>
+          <span style={{ display: "inline-flex", alignItems: "center" }}>
+            <Badge color={STATUS_COLORS[alert.status]}>{alert.status}</Badge>
+            {STATUS_HELP[alert.status] && <InfoTooltip text={STATUS_HELP[alert.status]} />}
+          </span>
         </Field>
         <Field label="Rule">{ruleName || "—"}</Field>
+        <Field label="MITRE technique">
+          {mitreTechnique ? (
+            <span style={{ display: "inline-flex", alignItems: "center" }}>
+              <Badge color={theme.color.accent}>{mitreTechnique}</Badge>
+              <InfoTooltip text={mitreTechniqueHelp(mitreTechnique)} />
+            </span>
+          ) : (
+            <span style={{ color: theme.color.textFaint }}>—</span>
+          )}
+        </Field>
         <Field label="Assignee">{isMine ? "You" : alert.assignee_id ? "Assigned" : "Unassigned"}</Field>
         <Field label="Created">{formatTimestamp(alert.created_at)}</Field>
         <Field label="Updated">{formatTimestamp(alert.updated_at)}</Field>
+        <Field label="Device">
+          {device ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Laptop size={13} color={theme.color.textMuted} />
+              {device.name}
+            </span>
+          ) : (
+            <span style={{ color: theme.color.textFaint }}>—</span>
+          )}
+        </Field>
         {alert.incident_id && (
           <Field label="Incident">
             <span style={{ fontSize: 12, color: theme.color.accent }}>Linked ✓</span>
@@ -129,44 +186,135 @@ export default function AlertDetailModal({ open, onClose, alert, ruleName, event
       </div>
 
       {alert.description && (
-        <Field label="Description">
-          <div
-            style={{
-              marginTop: 6,
-              padding: theme.space[3],
-              background: theme.color.background,
-              border: `1px solid ${theme.color.border}`,
-              borderRadius: theme.radius.sm,
-              fontSize: 13,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {alert.description}
+        <div style={{ marginBottom: theme.space[5], position: "relative" }}>
+          <Field label="Description">
+            <div
+              style={{
+                marginTop: 6,
+                padding: theme.space[3],
+                paddingRight: 32,
+                background: theme.color.background,
+                border: `1px solid ${theme.color.border}`,
+                borderRadius: theme.radius.sm,
+                fontSize: 13,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {alert.description}
+            </div>
+          </Field>
+          <div style={{ position: "absolute", top: 22, right: 8 }}>
+            <CopyButton value={alert.description} label="Copy description" />
           </div>
-        </Field>
+        </div>
       )}
 
       {sourceLog && (
-        <Field label="Source log">
-          <div
-            style={{
-              marginTop: 6,
-              padding: theme.space[3],
-              background: theme.color.background,
-              border: `1px solid ${theme.color.border}`,
-              borderRadius: theme.radius.sm,
-              fontSize: 13,
-            }}
-          >
-            <div style={{ color: theme.color.textMuted, marginBottom: 4 }}>
-              {formatTimestamp(sourceLog.timestamp)} · {sourceLog.event_type}
+        <div style={{ marginBottom: theme.space[5], position: "relative" }}>
+          <Field label="Source log">
+            <div
+              style={{
+                marginTop: 6,
+                padding: theme.space[3],
+                paddingRight: 32,
+                background: theme.color.background,
+                border: `1px solid ${theme.color.border}`,
+                borderRadius: theme.radius.sm,
+                fontSize: 13,
+              }}
+            >
+              <div style={{ color: theme.color.textMuted, marginBottom: 4 }}>
+                {formatTimestamp(sourceLog.timestamp)} · {sourceLog.event_type}
+              </div>
+              <div style={{ fontFamily: theme.font.mono, whiteSpace: "pre-wrap" }}>{sourceLog.message}</div>
             </div>
-            <div style={{ fontFamily: theme.font.mono, whiteSpace: "pre-wrap" }}>{sourceLog.message}</div>
+          </Field>
+          <div style={{ position: "absolute", top: 22, right: 8 }}>
+            <CopyButton value={sourceLog.message} label="Copy message" />
           </div>
-        </Field>
+        </div>
       )}
 
+      {/* Cross-navigation */}
+      <div style={{ display: "flex", gap: theme.space[2], marginBottom: theme.space[4], flexWrap: "wrap" }}>
+        {device && (
+          <Button size="sm" variant="secondary" onClick={handleViewDeviceAlerts}>
+            <Laptop size={13} /> View this device&apos;s alerts
+          </Button>
+        )}
+        {alert.rule_id && onFilterByRule && (
+          <Button size="sm" variant="secondary" onClick={handleViewRuleAlerts}>
+            <ListFilter size={13} /> View all alerts from this rule
+          </Button>
+        )}
+      </div>
+
       <EventGuide eventType={eventType} />
+
+      {rawText && (
+        <div style={{ marginTop: theme.space[4] }}>
+          <CollapsibleSection
+            icon={Braces}
+            title="Raw data"
+            right={<CopyButton value={rawText} label="Copy raw JSON" />}
+          >
+            <pre
+              style={{
+                margin: 0,
+                fontFamily: theme.font.mono,
+                fontSize: 12,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+                color: theme.color.textMuted,
+                maxHeight: 200,
+                overflowY: "auto",
+              }}
+            >
+              {rawText}
+            </pre>
+          </CollapsibleSection>
+        </div>
+      )}
+
+      {sourceLog && (
+        <div style={{ marginTop: theme.space[5] }}>
+          <button
+            type="button"
+            onClick={() => setShowIntel((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              color: theme.color.text,
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {showIntel ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <Radar size={14} color={theme.color.accent} />
+            Threat intel enrichment
+          </button>
+          {showIntel && (
+            <div
+              className="tp-mini-pane-enter"
+              style={{
+                marginTop: theme.space[3],
+                padding: theme.space[4],
+                border: `1px solid ${theme.color.border}`,
+                borderRadius: theme.radius.sm,
+                background: theme.color.background,
+              }}
+            >
+              <LogIntelPanel open={open && showIntel} text={sourceLog.message} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Link-to-incident inline picker — shown when "Link to incident" is clicked */}
       {showLinkPicker && !alert.incident_id && (

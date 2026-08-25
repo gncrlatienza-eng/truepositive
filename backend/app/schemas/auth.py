@@ -16,6 +16,10 @@ class SignupRequest(BaseModel):
     team_size: str = Field(min_length=1, max_length=20)
     workspace_slug: str = Field(min_length=1, max_length=63)
     agree_terms: bool
+    # Only checked when settings.signup_invite_required is true (i.e. an
+    # admin has set SIGNUP_INVITE_CODE for a public deployment) — otherwise
+    # ignored, so local/dev signup keeps working with no code at all.
+    invite_code: str | None = Field(default=None, max_length=255)
 
     @field_validator("workspace_slug")
     @classmethod

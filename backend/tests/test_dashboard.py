@@ -247,6 +247,115 @@ def test_kpi_deltas_compare_against_previous_equal_window(client, auth_headers, 
     assert kpi_by_key["ingestion"]["delta"] is None
 
 
+def test_summary_and_panels_scope_by_agent_id(client, auth_headers, db_session):
+    # Backs the dashboard's Scope Switcher: picking a specific device must
+    # narrow every KPI/panel to that device's own logs/alerts, not the org's.
+    org_id = _org_id(client, auth_headers)
+    agent_a = Agent(org_id=org_id, name="a", platform="linux", agent_key_hash="x", status="connected")
+    agent_b = Agent(org_id=org_id, name="b", platform="linux", agent_key_hash="x", status="connected")
+    db_session.add_all([agent_a, agent_b])
+    db_session.flush()
+    rule = AlertRule(org_id=org_id, name="r", conditions={}, severity=Severity.CRITICAL, enabled=True)
+    db_session.add(rule)
+    db_session.flush()
+
+    now = datetime.now(UTC)
+    log_a = Log(
+        org_id=org_id,
+        agent_id=agent_a.id,
+        timestamp=now,
+        severity=Severity.CRITICAL,
+        event_type="e",
+        message="m",
+        raw={},
+    )
+    log_b = Log(
+        org_id=org_id,
+        agent_id=agent_b.id,
+        timestamp=now,
+        severity=Severity.CRITICAL,
+        event_type="e",
+        message="m",
+        raw={},
+    )
+    db_session.add_all([log_a, log_b])
+    db_session.flush()
+    db_session.add_all(
+        [
+            Alert(
+                org_id=org_id,
+                rule_id=rule.id,
+                log_id=log_a.id,
+                severity=Severity.CRITICAL,
+                status=AlertStatus.OPEN,
+                title="from-a",
+            ),
+            Alert(
+                org_id=org_id,
+                rule_id=rule.id,
+                log_id=log_b.id,
+                severity=Severity.CRITICAL,
+                status=AlertStatus.OPEN,
+                title="from-b",
+            ),
+        ]
+    )
+    db_session.flush()
+
+    all_summary = client.get("/dashboard/summary", headers=auth_headers).json()
+    assert all_summary["ingest"]["today_total"] == 2
+    assert len(all_summary["alert_queue"]) == 2
+    by_sev_all = {row["severity"]: row["count"] for row in all_summary["severity_breakdown"]}
+    assert by_sev_all["critical"] == 2
+
+    scoped_summary = client.get("/dashboard/summary", params={"agent_id": agent_a.id}, headers=auth_headers).json()
+    assert scoped_summary["ingest"]["today_total"] == 1
+    assert len(scoped_summary["alert_queue"]) == 1
+    assert scoped_summary["alert_queue"][0]["title"] == "from-a"
+    by_sev_scoped = {row["severity"]: row["count"] for row in scoped_summary["severity_breakdown"]}
+    assert by_sev_scoped["critical"] == 1
+    # active_alerts KPI narrows too.
+    kpi_by_key = {k["key"]: k for k in scoped_summary["kpis"]}
+    assert kpi_by_key["alerts"]["value"] == "1"
+    assert kpi_by_key["events"]["value"] == "1"
+
+    scoped_events = client.get("/dashboard/panels/events", params={"agent_id": agent_b.id}, headers=auth_headers).json()
+    assert scoped_events["total"] == 1
+
+    scoped_alerts = client.get("/dashboard/panels/alerts", params={"agent_id": agent_b.id}, headers=auth_headers).json()
+    assert scoped_alerts["total"] == 1
+    assert scoped_alerts["recent"][0]["title"] == "from-b"
+
+    scoped_risk = client.get("/dashboard/panels/risk", params={"agent_id": agent_a.id}, headers=auth_headers).json()
+    assert scoped_risk["score"] == 4.0  # 1 critical * 4, not 2 critical * 4
+
+    scoped_critical = client.get(
+        "/dashboard/panels/critical", params={"agent_id": agent_a.id}, headers=auth_headers
+    ).json()
+    assert scoped_critical["count"] == 1
+    assert scoped_critical["recent"][0]["title"] == "from-a"
+
+    scoped_severity = client.get(
+        "/dashboard/panels/severity/critical", params={"agent_id": agent_b.id}, headers=auth_headers
+    ).json()
+    assert scoped_severity["count"] == 1
+
+    scoped_rule = client.get(
+        f"/dashboard/panels/rule/{rule.id}", params={"agent_id": agent_a.id}, headers=auth_headers
+    ).json()
+    assert scoped_rule["count_today"] == 1
+
+    scoped_event_type = client.get(
+        "/dashboard/panels/event-type/e", params={"agent_id": agent_a.id}, headers=auth_headers
+    ).json()
+    assert scoped_event_type["log_count"] == 1
+    assert scoped_event_type["alert_count"] == 1
+
+    # agents_online/agents_total stay fleet-wide even when scoped — a
+    # deliberate exception (see dashboard_service.get_summary's own comment).
+    assert scoped_summary["banner"]["agents_total"] == all_summary["banner"]["agents_total"]
+
+
 def test_triage_panel_empty_when_no_status_transitions(client, auth_headers, db_session):
     org_id = _org_id(client, auth_headers)
     rule = AlertRule(org_id=org_id, name="r", conditions={}, severity=Severity.HIGH, enabled=True)

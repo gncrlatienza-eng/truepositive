@@ -3,7 +3,7 @@ import pathlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.alert import Alert
@@ -227,33 +227,69 @@ def list_feed_indicators() -> list[FeedIndicator]:
 
 
 def get_workspace_hits(db: Session, org_id: uuid.UUID, days: int = 7) -> list[WorkspaceHit]:
-    """Real bulk cross-reference: every feed indicator (only 50, static, in
-    memory — no indexing concern) checked against this org's own logs within
-    the window, same substring-match convention as find_related_alerts/
-    lookup_ioc. Only indicators with at least one real hit are returned,
-    sorted most-recent-first.
+    """Real bulk cross-reference: every feed indicator checked against this
+    org's own logs within the window, same substring-match convention as
+    find_related_alerts/lookup_ioc. Only indicators with at least one real
+    hit are returned, sorted most-recent-first.
+
+    Previously issued one ILIKE query per feed indicator (100 sequential
+    round-trips for a 50-entry feed: one for matching logs, one for the
+    alert count) -- fine at seed-data scale, a real cost once the org's log
+    table is large. This runs exactly 2 queries regardless of feed size: one
+    OR-combined ILIKE across every indicator value to find all candidate
+    logs in the window, then one grouped alert-count query over whichever
+    logs actually matched. Which specific indicator(s) each returned log
+    matches is then resolved in Python against the (small, already-fetched)
+    result set -- the OR only proves "some indicator matched", not which one.
     """
     cutoff = datetime.now(UTC) - timedelta(days=days)
+    values = [entry["value"] for entry in _IOC_FEED]
+    if not values:
+        return []
+
+    matched_logs = db.execute(
+        select(Log.id, Log.message, Log.timestamp).where(
+            Log.org_id == org_id,
+            Log.timestamp >= cutoff,
+            or_(*[Log.message.ilike(f"%{v}%") for v in values]),
+        )
+    ).all()
+    if not matched_logs:
+        return []
+
+    log_ids_by_value: dict[str, list[int]] = {}
+    last_seen_by_value: dict[str, datetime] = {}
+    for log_id, message, timestamp in matched_logs:
+        lowered = message.lower()
+        for v in values:
+            if v.lower() in lowered:
+                log_ids_by_value.setdefault(v, []).append(log_id)
+                if v not in last_seen_by_value or timestamp > last_seen_by_value[v]:
+                    last_seen_by_value[v] = timestamp
+
+    if not log_ids_by_value:
+        return []
+
+    all_hit_log_ids = [lid for ids in log_ids_by_value.values() for lid in ids]
+    alert_rows = db.execute(
+        select(Alert.log_id, func.count())
+        .where(Alert.org_id == org_id, Alert.log_id.in_(all_hit_log_ids))
+        .group_by(Alert.log_id)
+    ).all()
+    alert_count_by_log: dict[int, int] = {log_id: count for log_id, count in alert_rows if log_id is not None}
+
     hits: list[WorkspaceHit] = []
     for entry in _IOC_FEED:
-        log_ids = list(
-            db.scalars(
-                select(Log.id).where(
-                    Log.org_id == org_id, Log.message.ilike(f"%{entry['value']}%"), Log.timestamp >= cutoff
-                )
-            )
-        )
+        log_ids = log_ids_by_value.get(entry["value"])
         if not log_ids:
             continue
-        alert_count = db.scalar(select(func.count()).where(Alert.org_id == org_id, Alert.log_id.in_(log_ids))) or 0
-        last_seen = db.scalar(select(func.max(Log.timestamp)).where(Log.id.in_(log_ids)))
         hits.append(
             WorkspaceHit(
                 type=entry["type"],
                 value=entry["value"],
                 category=entry["category"],
-                alert_count=alert_count,
-                last_seen=last_seen,
+                alert_count=sum(alert_count_by_log.get(lid, 0) for lid in log_ids),
+                last_seen=last_seen_by_value[entry["value"]],
             )
         )
     return sorted(hits, key=lambda h: h.last_seen or datetime.min.replace(tzinfo=UTC), reverse=True)

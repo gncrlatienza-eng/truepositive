@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.models.alert import Alert, AlertStatus
 from app.models.common import Severity
+from app.models.log import Log
 from app.models.user import User
-from app.schemas.alerts import AlertUpdate
+from app.schemas.alerts import AlertCreate, AlertUpdate
 from app.utils.csv import csv_safe
 
 MAX_LIMIT = 200
@@ -25,6 +26,7 @@ def _filtered_stmt(
     rule_id: uuid.UUID | None,
     assignee_id: uuid.UUID | None,
     log_id: int | None = None,
+    agent_id: uuid.UUID | None = None,
     q: str | None = None,
 ):
     stmt = select(Alert).where(Alert.org_id == org_id)
@@ -38,6 +40,11 @@ def _filtered_stmt(
         stmt = stmt.where(Alert.assignee_id == assignee_id)
     if log_id is not None:
         stmt = stmt.where(Alert.log_id == log_id)
+    if agent_id is not None:
+        # Alert has no agent_id of its own — same join-through-Log pattern
+        # dashboard_service.get_agents_panel's alert_count query already
+        # uses, backing the Scope Switcher's per-device alert view.
+        stmt = stmt.join(Log, Log.id == Alert.log_id).where(Log.agent_id == agent_id)
     if q:
         pattern = f"%{q}%"
         stmt = stmt.where(or_(Alert.title.ilike(pattern), Alert.description.ilike(pattern)))
@@ -53,6 +60,7 @@ def list_alerts(
     rule_id: uuid.UUID | None = None,
     assignee_id: uuid.UUID | None = None,
     log_id: int | None = None,
+    agent_id: uuid.UUID | None = None,
     q: str | None = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
@@ -65,6 +73,7 @@ def list_alerts(
         rule_id=rule_id,
         assignee_id=assignee_id,
         log_id=log_id,
+        agent_id=agent_id,
         q=q,
     )
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
@@ -80,10 +89,17 @@ def export_alerts_csv(
     severity: Severity | None = None,
     rule_id: uuid.UUID | None = None,
     assignee_id: uuid.UUID | None = None,
+    agent_id: uuid.UUID | None = None,
     q: str | None = None,
 ) -> str:
     stmt = _filtered_stmt(
-        org_id, status_filter=status_filter, severity=severity, rule_id=rule_id, assignee_id=assignee_id, q=q
+        org_id,
+        status_filter=status_filter,
+        severity=severity,
+        rule_id=rule_id,
+        assignee_id=assignee_id,
+        agent_id=agent_id,
+        q=q,
     )
     rows = db.scalars(stmt.order_by(Alert.created_at.desc()).limit(CSV_EXPORT_CAP)).all()
 
@@ -104,6 +120,30 @@ def export_alerts_csv(
             ]
         )
     return buffer.getvalue()
+
+
+def create_manual_alert(db: Session, org_id: uuid.UUID, payload: AlertCreate) -> Alert:
+    """An analyst escalating a log the rule engine didn't flag — rule_id is
+    always None here, distinguishing it from a rule-triggered alert (see
+    AlertOut.rule_id in the UI, which reads None as "manually created").
+    """
+    if payload.log_id is not None:
+        log = db.scalar(select(Log).where(Log.id == payload.log_id, Log.org_id == org_id))
+        if log is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Log not found")
+    alert = Alert(
+        org_id=org_id,
+        rule_id=None,
+        log_id=payload.log_id,
+        severity=payload.severity,
+        status=AlertStatus.OPEN,
+        title=payload.title,
+        description=payload.description,
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+    return alert
 
 
 def get_alert(db: Session, org_id: uuid.UUID, alert_id: uuid.UUID) -> Alert:

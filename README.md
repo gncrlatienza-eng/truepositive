@@ -71,6 +71,7 @@ Copy [`env.example`](env.example) to `.env` and fill in the values. `.env` is gi
 | `JWT_EXPIRE_MINUTES` | backend | Token lifetime in minutes | `43200` |
 | `CORS_ORIGINS` | backend | Comma-separated allowed frontend origins | `http://localhost:3000` |
 | `CREDENTIAL_ENCRYPTION_KEY` | backend | Fernet key encrypting remote log-source credentials at rest | output of `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_USE_TLS` | backend | Optional — SMTP config for actually emailing scheduled reports | leave all unset to keep scheduled report delivery log-only; works with any SMTP provider (Gmail, Outlook, a self-hosted relay) |
 | `VITE_API_URL` | frontend (build-time) | Overrides the API base URL baked into the frontend build | leave blank — the built-in default is a relative `/api` path, proxied to the backend by nginx (prod) or Vite's dev server (`npm run dev`), so one built image works behind any domain with no rebuild. Only set this if the frontend needs to reach a backend that isn't behind that same-origin proxy. |
 | `DOMAIN` | caddy (prod only) | Real domain Caddy requests a Let's Encrypt cert for | `app.example.com` — DNS must already point at the host, ports 80/443 must be internet-reachable |
 | `TS_HOSTNAME` | backend (Tailscale overlay only) | Your machine's Tailscale MagicDNS name, used for `CORS_ORIGINS` | `gio.tailnet-name.ts.net` — find it with `tailscale status` |

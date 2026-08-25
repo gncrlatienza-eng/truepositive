@@ -10,6 +10,7 @@ from fpdf import FPDF
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.agent import Agent
 from app.models.alert import Alert, AlertStatus
 from app.models.alert_rule import AlertRule
@@ -19,6 +20,7 @@ from app.models.log import Log
 from app.models.report import Report, ReportType
 from app.models.report_schedule import ReportSchedule
 from app.schemas.reports import ReportScheduleCreate
+from app.services import email_service
 from app.utils.csv import csv_safe
 
 logger = logging.getLogger(__name__)
@@ -524,14 +526,35 @@ def _deliver_to_matching_schedules(db: Session, org_id: uuid.UUID, report: Repor
             ReportSchedule.enabled.is_(True),
         )
     ).all()
+    if not schedules:
+        return
+
+    # Rendered once and reused for every matching schedule, not re-rendered
+    # per recipient. export_report_pdf() also stamps last_exported_at, which
+    # is correct here too -- an emailed report is a real export. Skipped
+    # entirely when SMTP isn't configured, so an unconfigured deployment
+    # doesn't pay the render cost for a log-only fallback.
+    pdf_bytes = export_report_pdf(db, org_id, report.id) if settings.smtp_configured else None
+
     for schedule in schedules:
-        logger.info(
-            "[REPORT DELIVERY] would email %s report (period %s to %s) to %s",
-            report.type.value,
-            report.period_start,
-            report.period_end,
-            schedule.email,
-        )
+        if pdf_bytes is not None:
+            sent = email_service.send_report_email(schedule.email, report, pdf_bytes)
+            logger.info(
+                "[REPORT DELIVERY] %s %s report (period %s to %s) to %s",
+                "sent" if sent else "failed to send",
+                report.type.value,
+                report.period_start,
+                report.period_end,
+                schedule.email,
+            )
+        else:
+            logger.info(
+                "[REPORT DELIVERY] would email %s report (period %s to %s) to %s (SMTP not configured)",
+                report.type.value,
+                report.period_start,
+                report.period_end,
+                schedule.email,
+            )
 
 
 def list_reports(

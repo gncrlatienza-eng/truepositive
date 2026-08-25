@@ -92,6 +92,19 @@ def test_resolved_at_clears_on_reopen(client, auth_headers):
     assert r.json()["resolved_at"] is None
 
 
+def test_mark_false_positive_sets_resolved_at_and_clears_on_reopen(client, auth_headers):
+    created = _create_incident(client, auth_headers)
+    inc_id = created["id"]
+
+    r = client.patch(f"/incidents/{inc_id}", json={"status": "false_positive"}, headers=auth_headers)
+    body = r.json()
+    assert body["status"] == "false_positive"
+    assert body["resolved_at"] is not None
+
+    r = client.patch(f"/incidents/{inc_id}", json={"status": "open"}, headers=auth_headers)
+    assert r.json()["resolved_at"] is None
+
+
 # ── SLA breach flag ────────────────────────────────────────────────────────────
 
 
@@ -121,6 +134,23 @@ def test_resolved_incident_not_sla_breached(client, auth_headers, db_session):
         org_id=org_id,
         title="Old resolved",
         status=IncidentStatus.RESOLVED,
+        risk_score=0,
+        created_at=old_time,
+    )
+    db_session.add(inc)
+    db_session.flush()
+
+    r = client.get(f"/incidents/{inc.id}", headers=auth_headers)
+    assert r.json()["sla_breached"] is False
+
+
+def test_false_positive_incident_not_sla_breached(client, auth_headers, db_session):
+    org_id = _org_id(client, auth_headers)
+    old_time = datetime.now(UTC) - timedelta(hours=73)
+    inc = Incident(
+        org_id=org_id,
+        title="Old false positive",
+        status=IncidentStatus.FALSE_POSITIVE,
         risk_score=0,
         created_at=old_time,
     )

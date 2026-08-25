@@ -44,6 +44,7 @@ running agents.
 
 import argparse
 import hashlib
+import http.server
 import json
 import os
 import platform
@@ -88,6 +89,12 @@ REGISTER_RETRY_GIVE_UP_AFTER_SECONDS = 300
 CRASH_LOG_FILENAME = "agent_crash_log.json"
 MAX_RESTARTS_IN_WINDOW = 5
 RESTART_WINDOW_SECONDS = 600
+# Hub-and-spoke relay (Phase 1: manual pairing, full isolation — see
+# _run_relay_http_server / _relay_call). Arbitrary, fixed port a hub agent
+# listens on for its own relay children's LAN-local traffic; must match
+# nowhere server-side since the backend never talks to this port directly —
+# only another instance of this same script (running as a relay child) does.
+RELAY_LISTEN_PORT = 47824
 # Must match the backend's routes/agents.py — the dashboard's one-click
 # download appends this marker + a JSON config directly onto a copy of this
 # program's own compiled .exe, so double-clicking it needs nothing else next
@@ -151,6 +158,59 @@ def _safe_console_log(message: str) -> None:
             pass
 
 
+# Real DNS-resolution hangs happen in the wild -- especially right after a
+# laptop wakes from sleep, a VPN reconnects, or Wi-Fi power-saving cycles the
+# adapter -- and urlopen's own `timeout=` parameter does NOT cover them:
+# getaddrinfo is a separate blocking OS call that happens before the
+# socket's timeout is even in play, and Python's stdlib has no way to bound
+# it directly. Left alone, this silently froze the heartbeat loop forever
+# with no exception ever raised for anything to catch -- the agent stayed
+# alive in Task Manager but stopped reporting, with last_seen_at frozen and
+# nothing logged, until someone noticed and manually restarted it.
+NETWORK_HARD_TIMEOUT_SECONDS = 20
+
+
+def _call_with_hard_timeout(fn):
+    """Runs fn() in a throwaway daemon thread and joins it with a hard
+    wall-clock timeout, so a hang anywhere inside fn (including a stuck DNS
+    lookup urlopen's own timeout can't reach) can never block the calling
+    thread forever. A Python thread can't be forcibly killed -- if fn is
+    still hung when the timeout is hit, the thread keeps running harmlessly
+    in the background (daemon=True, so it never blocks process exit either)
+    until whatever it's stuck on eventually resolves on its own; the caller
+    just stops waiting on it and treats this as a failed call.
+    """
+    result: dict = {}
+
+    def _target() -> None:
+        try:
+            result["value"] = fn()
+        except Exception as exc:  # noqa: BLE001 — re-raised on the caller's thread below, not swallowed
+            result["error"] = exc
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout=NETWORK_HARD_TIMEOUT_SECONDS)
+    if thread.is_alive():
+        raise AgentRequestError(
+            f"Timed out after {NETWORK_HARD_TIMEOUT_SECONDS}s waiting for a response -- the request may still "
+            "be hanging in the background (e.g. a stuck DNS lookup after a network change)."
+        )
+    if "error" in result:
+        raise result["error"]
+    return result["value"]
+
+
+def _open_and_parse(request: urllib.request.Request, url: str) -> dict | object:
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        raise AgentRequestError(_http_error_message(url, exc), status_code=exc.code) from exc
+    except urllib.error.URLError as exc:
+        raise AgentRequestError(f"Could not reach {url}: {exc.reason}") from exc
+
+
 def _post(url: str, agent_key: str, body: dict) -> dict:
     request = urllib.request.Request(
         url,
@@ -158,24 +218,12 @@ def _post(url: str, agent_key: str, body: dict) -> dict:
         headers={"Content-Type": "application/json", "X-Agent-Key": agent_key},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            return json.loads(response.read())
-    except urllib.error.HTTPError as exc:
-        raise AgentRequestError(_http_error_message(url, exc), status_code=exc.code) from exc
-    except urllib.error.URLError as exc:
-        raise AgentRequestError(f"Could not reach {url}: {exc.reason}") from exc
+    return _call_with_hard_timeout(lambda: _open_and_parse(request, url))
 
 
 def _get(url: str, agent_key: str) -> object:
     request = urllib.request.Request(url, headers={"X-Agent-Key": agent_key}, method="GET")
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            return json.loads(response.read())
-    except urllib.error.HTTPError as exc:
-        raise AgentRequestError(_http_error_message(url, exc), status_code=exc.code) from exc
-    except urllib.error.URLError as exc:
-        raise AgentRequestError(f"Could not reach {url}: {exc.reason}") from exc
+    return _call_with_hard_timeout(lambda: _open_and_parse(request, url))
 
 
 def _http_error_message(url: str, exc: urllib.error.HTTPError) -> str:
@@ -189,8 +237,91 @@ def _http_error_message(url: str, exc: urllib.error.HTTPError) -> str:
     return f"Request to {url} failed ({exc.code}): {detail}"
 
 
+# ── Connection abstraction: direct-to-backend vs. relay-through-hub ────────
+# Every call site that used to build a URL as f"{base}/agents/{agent_id}/..."
+# now goes through one of the five wrappers below instead, keyed off a small
+# `conn` dict built once by main() (or internally by run_cli, for the CLI
+# path) from the loaded config: {"mode": "direct", "base": <real backend
+# URL>} preserves today's exact behavior, while {"mode": "relay",
+# "hub_relay_url": <hub's local LAN address>} sends the same logical request
+# to the hub's local relay listener instead (see _run_relay_http_server for
+# the other end of that hop), which makes the real call to the backend on
+# this agent's behalf. Every other function in this file that talks to "the
+# backend" -- _collect_and_ship, run_cli/run_gui/run_silent -- goes through
+# `conn`, never a bare `base` string, so relay mode needed no changes
+# anywhere except these wrappers and the three entry points that build `conn`.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _relay_call(conn: dict, kind: str, agent_id: str, agent_key: str, **extra) -> dict:
+    # agent_key travels over this LAN hop in the clear (plain HTTP, no TLS)
+    # -- an accepted, documented v1 trade-off (see SECURITY.md), but not a
+    # meaningless one: the hub's local listener forwards it to the real
+    # backend, which verifies it against this exact agent's own
+    # agent_key_hash before acting on anything (relay_service._get_relay_
+    # child) -- this is what stops a LAN-adjacent caller who merely observes
+    # this agent's id (also visible on the wire here) from impersonating it.
+    body = {"id": agent_id, "key": agent_key, "kind": kind, **extra}
+    url = f"{conn['hub_relay_url']}/relay/proxy"
+    request = urllib.request.Request(
+        url, data=json.dumps(body).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST"
+    )
+    return _call_with_hard_timeout(lambda: _open_and_parse(request, url))
+
+
+def _register(conn: dict, agent_id: str, agent_key: str, hostname: str) -> dict:
+    if conn["mode"] == "relay":
+        result = _relay_call(conn, "register", agent_id, agent_key, hostname=hostname)["heartbeat"]
+    else:
+        result = _post(f"{conn['base']}/agents/{agent_id}/register", agent_key, {"hostname": hostname})
+    # Relay's response is heartbeat-shaped (id/status/last_seen_at/is_primary)
+    # -- it never echoes hostname back, since the child already knows its own.
+    # A direct-mode response already has it (the real backend's AgentOut).
+    result.setdefault("hostname", hostname)
+    return result
+
+
+def _heartbeat(conn: dict, agent_id: str, agent_key: str, *, relay_listen_addr: str | None = None) -> dict:
+    if conn["mode"] == "relay":
+        return _relay_call(conn, "heartbeat", agent_id, agent_key)["heartbeat"]
+    body = {"relay_listen_addr": relay_listen_addr} if relay_listen_addr is not None else {}
+    # Only ever populated direct-mode, same as relay_listen_addr above -- a
+    # relay child's capabilities aren't reported yet (out of scope, see
+    # implementation plan: relay_proxy's "heartbeat" kind carries no such
+    # field today).
+    body.update(_capabilities_for_heartbeat())
+    return _post(f"{conn['base']}/agents/{agent_id}/heartbeat", agent_key, body)
+
+
+def _get_sources(conn: dict, agent_id: str, agent_key: str) -> list:
+    if conn["mode"] == "relay":
+        return _relay_call(conn, "sources", agent_id, agent_key)["sources"]
+    return _get(f"{conn['base']}/agents/{agent_id}/sources", agent_key)
+
+
+def _report_source_status(conn: dict, agent_id: str, agent_key: str, results: list[dict]) -> dict:
+    if conn["mode"] == "relay":
+        return _relay_call(conn, "source_status", agent_id, agent_key, source_status_results=results)["source_status"]
+    return _post(f"{conn['base']}/agents/{agent_id}/sources/status", agent_key, {"results": results})
+
+
+def _ingest_logs(conn: dict, agent_id: str, agent_key: str, batch: list[dict]) -> dict:
+    if conn["mode"] == "relay":
+        return _relay_call(conn, "logs", agent_id, agent_key, logs=batch)["logs"]
+    return _post(f"{conn['base']}/agents/{agent_id}/logs", agent_key, {"logs": batch})
+
+
+def _conn_from_config(config: dict) -> dict:
+    # config["relay_mode"] is set by _show_connect_form's "Connect through a
+    # hub" choice (or an installer/agent_config.json set up that way by
+    # hand) -- see that function's docstring for the full shape.
+    if config.get("relay_mode"):
+        return {"mode": "relay", "hub_relay_url": config["hub_relay_url"].rstrip("/")}
+    return {"mode": "direct", "base": config["url"].rstrip("/")}
+
+
 def _register_with_retry(
-    base: str,
+    conn: dict,
     agent_id: str,
     agent_key: str,
     hostname: str,
@@ -199,11 +330,12 @@ def _register_with_retry(
     stop_event: threading.Event | None = None,
     give_up_after_seconds: float | None = REGISTER_RETRY_GIVE_UP_AFTER_SECONDS,
 ) -> dict | None:
-    """POSTs /register with capped backoff (5s, 10s, 20s, 40s, 60s, 60s, ...).
-    A 401 raises AgentCredentialsError immediately -- never retried, since a
-    wrong/stale key won't fix itself by waiting. Gives up and returns None
-    once give_up_after_seconds has elapsed (or immediately if stop_event
-    fires during a wait), matching "the next login tries again". on_retry is
+    """POSTs /register (direct or relayed, per `conn` -- see above) with
+    capped backoff (5s, 10s, 20s, 40s, 60s, 60s, ...). A 401 raises
+    AgentCredentialsError immediately -- never retried, since a wrong/stale
+    key won't fix itself by waiting. Gives up and returns None once
+    give_up_after_seconds has elapsed (or immediately if stop_event fires
+    during a wait), matching "the next login tries again". on_retry is
     called after each retryable failure so callers can update their own
     status surface (console log vs. Tk label) without this function knowing
     about either.
@@ -214,7 +346,7 @@ def _register_with_retry(
     while True:
         attempt += 1
         try:
-            return _post(f"{base}/agents/{agent_id}/register", agent_key, {"hostname": hostname})
+            return _register(conn, agent_id, agent_key, hostname)
         except AgentRequestError as exc:
             if exc.status_code == 401:
                 raise AgentCredentialsError(str(exc), status_code=401) from exc
@@ -270,6 +402,168 @@ def _verify_pinned_cert(base_url: str, pinned_sha256: str, log_fn=print) -> bool
         )
         return False
     return True
+
+
+# ── Hub-relay listener: the LAN-facing side of the connection abstraction
+# above. Only ever runs on a device that (a) connects directly (conn["mode"]
+# == "direct" -- see _maybe_activate_hub_mode) and (b) has learned
+# is_primary=True from its own register/heartbeat response. A relay child by
+# definition can never legitimately run this too -- there's no support for
+# a child-of-a-child in this design (see relay_service._require_hub's
+# matching no-chaining rejection server-side); gating hub-mode activation on
+# conn["mode"] == "direct" is what keeps that true agent-side as well, with
+# no separate flag to keep in sync.
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _local_lan_ip() -> str | None:
+    # The standard portable trick for "what's this machine's real LAN IP":
+    # open a UDP socket and ask the OS which local address it would use to
+    # reach an external host. UDP has no handshake, so connect() here never
+    # actually sends a packet -- it just consults local routing, making this
+    # safe to call even with no real connectivity to 8.8.8.8 (or any
+    # internet access at all, on a LAN-only segment).
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return None
+
+
+def _make_relay_request_handler(base: str, hub_agent_id: str, hub_agent_key: str, log_fn):
+    """Builds the request handler class for the hub's local relay listener.
+    One fixed endpoint, POST /relay/proxy, mirroring the backend's own
+    POST /agents/{hub_id}/relay-proxy shape almost exactly -- a relay child
+    posts {id, key, kind, ...}, this forwards it to the real backend as
+    {child_id, key, kind, ...} authenticated as *this hub* (the X-Agent-Key
+    header proves the hub itself is legitimate; the child's own key inside
+    the body is what proves this call is genuinely acting on behalf of
+    *that* child -- the backend verifies it against the child's real
+    agent_key_hash before doing anything, see relay_service._get_relay_child),
+    and relays the backend's JSON response straight back down to the child
+    unchanged.
+
+    This local listener itself still performs no authentication of its own
+    beyond "does the payload have the right shape" -- it deliberately trusts
+    the child key it receives to the real backend rather than trying to
+    verify it locally (this process has no access to any hash to check it
+    against). A live security review confirmed that previously, hub
+    ownership of *a* child_id was being treated by the backend as
+    authorization for *any* child_id, which meant an untrusted LAN caller
+    who simply observed a child_id (transmitted here in the clear on every
+    legitimate call) could impersonate that child with no real credential
+    at all -- fixed by requiring and verifying the key server-side; see
+    SECURITY.md.
+    """
+
+    class RelayProxyHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, format_str, *args) -> None:
+            pass  # silence default stderr access logging -- nothing to print to on a windowed build
+
+        def _reply(self, status_code: int, payload: dict | None = None) -> None:
+            data = json.dumps(payload if payload is not None else {}).encode("utf-8")
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            try:
+                self.wfile.write(data)
+            except OSError:
+                pass  # child disconnected mid-response -- nothing more to do
+
+        def do_POST(self) -> None:
+            if self.path != "/relay/proxy":
+                self._reply(404)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                payload = json.loads(self.rfile.read(length) or b"{}")
+            except (ValueError, OSError, json.JSONDecodeError):
+                self._reply(400)
+                return
+
+            child_id = payload.get("id")
+            child_key = payload.get("key")
+            kind = payload.get("kind")
+            if not child_id or not child_key or kind not in ("register", "heartbeat", "sources", "source_status", "logs"):
+                self._reply(400)
+                return
+
+            body = {"child_id": child_id, "key": child_key, "kind": kind}
+            if kind == "register":
+                body["hostname"] = payload.get("hostname")
+            elif kind == "source_status":
+                body["source_status_results"] = payload.get("source_status_results")
+            elif kind == "logs":
+                body["logs"] = payload.get("logs")
+
+            try:
+                result = _post(f"{base}/agents/{hub_agent_id}/relay-proxy", hub_agent_key, body)
+            except AgentRequestError as exc:
+                log_fn(f"Relay proxy call failed for child {child_id} ({kind}): {exc}")
+                self._reply(exc.status_code or 502)
+                return
+            self._reply(200, result)
+
+    return RelayProxyHandler
+
+
+def _run_relay_http_server(base: str, hub_agent_id: str, hub_agent_key: str, log_fn=_safe_console_log) -> None:
+    """Runs forever in its own daemon thread once hub mode activates (see
+    _maybe_activate_hub_mode) -- never explicitly stopped, same pattern as
+    every other background thread in this file; it just dies with the
+    process. Binds 0.0.0.0 (every local interface), not just one -- a
+    consumer laptop's real LAN-facing address can change (Wi-Fi vs.
+    Ethernet, a new DHCP lease) without this needing to know which one.
+    """
+    handler_cls = _make_relay_request_handler(base, hub_agent_id, hub_agent_key, log_fn)
+    try:
+        server = http.server.ThreadingHTTPServer(("0.0.0.0", RELAY_LISTEN_PORT), handler_cls)
+    except OSError as exc:
+        log_fn(
+            f"Could not start the hub relay listener on port {RELAY_LISTEN_PORT} (non-fatal -- this device just "
+            f"won't be able to host relay children until this is resolved): {exc}"
+        )
+        return
+    server.daemon_threads = True
+    log_fn(f"Hub relay listener started on 0.0.0.0:{RELAY_LISTEN_PORT} — this device can now host relay children.")
+    server.serve_forever()
+
+
+# Module-level, not per-conn state: a process only ever runs one agent
+# identity, so "have I already started the relay listener this run" is
+# meaningfully global, not something to thread through every call site.
+_hub_relay_server_started = threading.Event()
+
+
+def _maybe_activate_hub_mode(conn: dict, agent_id: str, agent_key: str, is_primary: bool, log_fn) -> None:
+    """Called after every successful register/heartbeat, direct-mode or not
+    (cheap no-op otherwise) -- so an agent marked primary well after it first
+    connected still picks up hub behavior on its very next heartbeat, no
+    restart needed. Relay mode is deliberately excluded (conn["mode"] !=
+    "direct" short-circuits immediately): a relay child can never
+    legitimately act as a hub in this design (see this section's own
+    docstring above) regardless of what is_primary happens to say.
+    """
+    if conn["mode"] != "direct" or not is_primary or _hub_relay_server_started.is_set():
+        return
+    _hub_relay_server_started.set()
+    threading.Thread(
+        target=_run_relay_http_server, args=(conn["base"], agent_id, agent_key, log_fn), daemon=True
+    ).start()
+
+
+def _current_relay_listen_addr() -> str | None:
+    """What this agent reports as its relay_listen_addr on every heartbeat
+    once hub mode is active (see HeartbeatRequest server-side) -- None until
+    then, and None again if the LAN IP can't be determined, both of which
+    the backend already treats as "nothing to show yet" rather than an error.
+    """
+    if not _hub_relay_server_started.is_set():
+        return None
+    ip = _local_lan_ip()
+    return f"{ip}:{RELAY_LISTEN_PORT}" if ip else None
 
 
 def _app_dir() -> Path:
@@ -427,8 +721,14 @@ def _current_windows_identity() -> str | None:
     # which net.exe localgroup accepts directly and unambiguously.
     try:
         result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-             "[System.Security.Principal.WindowsIdentity]::GetCurrent().Name"],
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "[System.Security.Principal.WindowsIdentity]::GetCurrent().Name",
+            ],
             capture_output=True,
             text=True,
             timeout=15,
@@ -495,6 +795,75 @@ def _do_grant_log_access(log_fn=_safe_console_log) -> tuple[bool, str]:
         )
     detail = (result.stderr or result.stdout or "").strip()[:200]
     return False, f"Could not grant access (exit code {result.returncode}){': ' + detail if detail else ''}"
+
+
+CAPABILITIES_CHECK_INTERVAL_SECONDS = 300
+
+_capabilities_cache: dict = {}
+_capabilities_last_checked = 0.0
+
+
+def _is_event_log_reader_member() -> bool | None:
+    """Proactive read-access check -- distinct from _do_grant_log_access
+    (which only *fixes* an existing source's failure reactively, via
+    _maybe_auto_fix_source). Lists the Event Log Readers local group and
+    looks for the current user, so onboarding/Settings can show a real
+    "you already have access" status instead of the old static "Needs
+    Administrator" badge. Returns None (not False) if the check itself
+    couldn't run, so "unknown" is never conflated with "definitely not a
+    member" -- the backend/frontend both treat None as "not yet reported".
+    """
+    identity = _cached_windows_identity()
+    if not identity:
+        return None
+    # net.exe localgroup /add accepts "DOMAIN\Username" (see
+    # _do_grant_log_access), but membership listing just prints bare
+    # usernames -- compare against the part after the backslash.
+    bare_username = identity.rsplit("\\", 1)[-1]
+    try:
+        result = subprocess.run(
+            ["net.exe", "localgroup", "Event Log Readers"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return bare_username.lower() in (result.stdout or "").lower()
+
+
+def _check_capabilities() -> dict:
+    """Windows-only real capability snapshot, reported on the heartbeat
+    (see _capabilities_for_heartbeat) so LocalSourcePicker can show a real
+    status instead of static catalog badges. Empty on non-Windows -- there's
+    nothing analogous to check there yet.
+    """
+    if platform.system() != "Windows":
+        return {}
+    return {
+        "event_log_reader_member": _is_event_log_reader_member(),
+        "sysmon_installed": _is_sysmon_installed(),
+    }
+
+
+def _capabilities_for_heartbeat() -> dict:
+    # The checks above spawn a couple of subprocesses -- cheap, but no
+    # reason to pay that cost on every ~30s heartbeat when the answer only
+    # ever changes after a manual permission grant or a Sysmon install (both
+    # already logged/handled elsewhere). Recomputed at most once per
+    # CAPABILITIES_CHECK_INTERVAL_SECONDS; the cached value is still resent
+    # on every heartbeat in between so a slow first check doesn't leave the
+    # backend without a value for minutes.
+    global _capabilities_cache, _capabilities_last_checked
+    now = time.monotonic()
+    if not _capabilities_cache or now - _capabilities_last_checked >= CAPABILITIES_CHECK_INTERVAL_SECONDS:
+        _capabilities_cache = _check_capabilities()
+        _capabilities_last_checked = now
+    return _capabilities_cache
 
 
 def _is_sysmon_installed() -> bool:
@@ -730,9 +1099,7 @@ def _trigger_scheduled_task_and_wait(name: str, timeout: int = 180) -> tuple[boo
     result_path = _app_dir() / ELEVATED_ACTION_RESULT_FILENAME
     result_path.unlink(missing_ok=True)
     try:
-        subprocess.run(
-            ["schtasks", "/Run", "/TN", name], capture_output=True, text=True, timeout=10, check=False
-        )
+        subprocess.run(["schtasks", "/Run", "/TN", name], capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"Could not start the pre-authorized task: {exc}"
     deadline = time.time() + timeout
@@ -1070,7 +1437,9 @@ def _warn_channel_once(channel: str, reason: str, log_fn) -> None:
     if channel in _warned_channels:
         return
     _warned_channels.add(channel)
-    log_fn(f"Could not read Windows Event Log channel '{channel}': {reason}. Skipping it this and future cycles until restart.")
+    log_fn(
+        f"Could not read Windows Event Log channel '{channel}': {reason}. Skipping it this and future cycles until restart."
+    )
 
 
 def _query_windows_channel(
@@ -1210,6 +1579,25 @@ def _collect_source(source: dict, bookmark, log_fn=print) -> tuple[list[dict], o
             return [], latest[0]["record_id"], status, reason
         events, status, reason = _query_windows_channel(path, bookmark, COLLECT_BATCH_LIMIT, log_fn)
         if not events:
+            if status == "ok":
+                # A real "nothing new since last cycle" looks identical to a
+                # channel that got cleared/reset out from under a now-stale
+                # bookmark (same failure shape _tail_local_file's rotation
+                # guard above handles for local files) -- EventRecordID>
+                # {bookmark} then matches nothing forever, silently freezing
+                # this source with no error ever surfaced. Cheaply confirm
+                # the bookmark is still behind the channel's real newest
+                # event; if the channel has since reset to something lower,
+                # rebaseline instead of polling a dead bookmark forever.
+                latest, latest_status, latest_reason = _query_windows_channel(
+                    path, None, 1, log_fn, newest_first=True
+                )
+                if latest and latest[0]["record_id"] < bookmark:
+                    log_fn(
+                        f"Log channel {path} appears to have been cleared or reset — "
+                        "resuming from the newest event."
+                    )
+                    return [], latest[0]["record_id"], latest_status, latest_reason
             return [], bookmark, status, reason
         new_bookmark = max(e["record_id"] for e in events)
         return events, new_bookmark, status, reason
@@ -1232,10 +1620,10 @@ def _collect_source(source: dict, bookmark, log_fn=print) -> tuple[list[dict], o
 
 
 def _collect_and_ship(
-    base: str, agent_id: str, agent_key: str, state: dict, log_fn=print, allow_auto_fix_prompt: bool = False
+    conn: dict, agent_id: str, agent_key: str, state: dict, log_fn=print, allow_auto_fix_prompt: bool = False
 ) -> None:
     try:
-        sources = _get(f"{base}/agents/{agent_id}/sources", agent_key)
+        sources = _get_sources(conn, agent_id, agent_key)
     except AgentRequestError as exc:
         log_fn(f"Could not fetch assigned sources: {exc}")
         return
@@ -1273,7 +1661,7 @@ def _collect_and_ship(
     # not just "silence" when a channel legitimately had nothing new.
     if source_results:
         try:
-            _post(f"{base}/agents/{agent_id}/sources/status", agent_key, {"results": source_results})
+            _report_source_status(conn, agent_id, agent_key, source_results)
         except AgentRequestError as exc:
             log_fn(f"Could not report source status: {exc}")
 
@@ -1283,7 +1671,7 @@ def _collect_and_ship(
         return
 
     try:
-        result = _post(f"{base}/agents/{agent_id}/logs", agent_key, {"logs": batch})
+        result = _ingest_logs(conn, agent_id, agent_key, batch)
         log_fn(f"shipped {result['ingested']} log(s), {result['alerts_created']} alert(s) triggered")
         bookmarks.update(staged_bookmarks)
         _save_state(state)
@@ -1372,6 +1760,17 @@ def _format_already_running_message(status: dict | None) -> str:
 
 
 def _show_already_running_message() -> None:
+    # The fallback here used to be `print(message, file=sys.stderr)` -- but
+    # sys.stderr is None on this frozen windowed (console=False) build (see
+    # tp_agent.spec), so if the Tkinter dialog above ever failed for any
+    # reason, that fallback line itself raised AttributeError. Since this
+    # function is called with no enclosing try/except in main(), that
+    # exception reached _run_with_crash_recovery, which relaunches the
+    # process -- straight back into the same "already running" mutex check,
+    # crashing the same way again, burning through all 5 restart attempts in
+    # seconds with zero visible feedback: exactly "I double-click it and
+    # nothing happens." _show_crash_giveup_message already uses the correct
+    # safe-no-op pattern below; this one just never got the same fix.
     message = _format_already_running_message(_read_status())
     try:
         import tkinter as tk
@@ -1381,48 +1780,58 @@ def _show_already_running_message() -> None:
         root.withdraw()
         _set_window_icon(root)
         messagebox.showinfo("TruePositive Agent", message)
-    except Exception:
-        print(message, file=sys.stderr)
+    except Exception:  # noqa: BLE001, S110 — this dialog is a courtesy, never let it mask the real exit
+        pass
 
 
 # The Run key above launches the exe with no arguments, so a CLI-args launch
 # (truepositive-agent.exe --url ... --id ... --key ...) needs its connection details
 # saved somewhere _load_config() will find on that bare relaunch — unless
 # they're already embedded in the binary itself (the dashboard's one-click
-# download), in which case there's nothing to persist.
-def _ensure_local_config_persisted(url: str, agent_id: str, agent_key: str) -> None:
+# download), in which case there's nothing to persist. Takes the whole
+# config dict (not separate url/id/key) so a relay child's relay_mode/
+# hub_relay_url round-trips through a relaunch exactly like a direct-connect
+# child's url does — same function, no special-casing needed per mode.
+def _ensure_local_config_persisted(config: dict) -> None:
     if not getattr(sys, "frozen", False) or _load_embedded_config() is not None:
         return
     config_path = _app_dir() / CONFIG_FILENAME
     if config_path.exists():
         return
     try:
-        config_path.write_text(json.dumps({"url": url, "id": agent_id, "key": agent_key}), encoding="utf-8")
+        config_path.write_text(json.dumps(config), encoding="utf-8")
         _tighten_file_permissions(config_path)
     except OSError:
         pass
 
 
+# CLI mode (--url/--id/--key) is direct-connect only in Phase 1 -- relay
+# pairing is an installer/connect-form choice (see _show_connect_form), not
+# a scripting flag. `base` stays the public signature (main()'s dispatch and
+# any external scripting depend on it); `conn` is just built internally.
 def run_cli(base: str, agent_id: str, agent_key: str) -> None:
+    conn = {"mode": "direct", "base": base}
     hostname = socket.gethostname()
     print(f"Registering agent {agent_id} as '{hostname}'...", flush=True)
     try:
-        agent = _post(f"{base}/agents/{agent_id}/register", agent_key, {"hostname": hostname})
+        agent = _register(conn, agent_id, agent_key, hostname)
     except AgentRequestError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
     print(f"Connected. status={agent['status']} hostname={agent['hostname']}", flush=True)
     print(f"Sending a heartbeat every {HEARTBEAT_INTERVAL_SECONDS}s. Press Ctrl+C to stop.", flush=True)
-    _ensure_local_config_persisted(base, agent_id, agent_key)
+    _ensure_local_config_persisted({"url": base, "id": agent_id, "key": agent_key})
     _ensure_windows_autostart()
+    _maybe_activate_hub_mode(conn, agent_id, agent_key, agent.get("is_primary", False), print)
 
     state = _load_state()
     try:
         while True:
             time.sleep(HEARTBEAT_INTERVAL_SECONDS)
-            beat = _post(f"{base}/agents/{agent_id}/heartbeat", agent_key, {})
+            beat = _heartbeat(conn, agent_id, agent_key, relay_listen_addr=_current_relay_listen_addr())
             print(f"heartbeat ok — last_seen_at={beat['last_seen_at']}", flush=True)
-            _collect_and_ship(base, agent_id, agent_key, state, allow_auto_fix_prompt=True)
+            _maybe_activate_hub_mode(conn, agent_id, agent_key, beat.get("is_primary", False), print)
+            _collect_and_ship(conn, agent_id, agent_key, state, allow_auto_fix_prompt=True)
     except KeyboardInterrupt:
         print("\nStopped.")
         sys.exit(0)
@@ -1431,9 +1840,11 @@ def run_cli(base: str, agent_id: str, agent_key: str) -> None:
         sys.exit(1)
 
 
-def run_gui(base: str, agent_id: str, agent_key: str) -> None:
+def run_gui(config: dict, agent_id: str, agent_key: str) -> None:
     import tkinter as tk
     from tkinter import scrolledtext
+
+    conn = _conn_from_config(config)
 
     root = tk.Tk()
     root.title("TruePositive Agent")
@@ -1487,7 +1898,10 @@ def run_gui(base: str, agent_id: str, agent_key: str) -> None:
         log(f"Registering as '{hostname}'...")
         try:
             agent = _register_with_retry(
-                base, agent_id, agent_key, hostname,
+                conn,
+                agent_id,
+                agent_key,
+                hostname,
                 on_retry=on_register_retry,
                 stop_event=stop_event,
             )
@@ -1503,22 +1917,39 @@ def run_gui(base: str, agent_id: str, agent_key: str) -> None:
 
         set_status("Connected", f"{agent['hostname']} · registered")
         log(f"Connected. Sending a heartbeat every {HEARTBEAT_INTERVAL_SECONDS}s.")
-        _ensure_local_config_persisted(base, agent_id, agent_key)
+        _ensure_local_config_persisted(config)
         _ensure_windows_autostart(log_fn=log)
+        _maybe_activate_hub_mode(conn, agent_id, agent_key, agent.get("is_primary", False), log)
 
         state = _load_state()
         while not stop_event.is_set():
             if stop_event.wait(HEARTBEAT_INTERVAL_SECONDS):
                 break
             try:
-                beat = _post(f"{base}/agents/{agent_id}/heartbeat", agent_key, {})
+                beat = _heartbeat(conn, agent_id, agent_key, relay_listen_addr=_current_relay_listen_addr())
                 set_status("Connected", f"last heartbeat {beat['last_seen_at']}")
                 log(f"heartbeat ok — last_seen_at={beat['last_seen_at']}")
+                _maybe_activate_hub_mode(conn, agent_id, agent_key, beat.get("is_primary", False), log)
             except AgentRequestError as exc:
                 set_status("Heartbeat failed", str(exc))
                 log(str(exc))
+            except Exception as exc:  # noqa: BLE001 — deliberately broad, same reasoning as
+                # _collect_and_ship's guard just below: this call used to be caught only
+                # by `except AgentRequestError`, so anything else it raised (a malformed
+                # response missing an expected key, a raw socket exception urllib
+                # didn't wrap as AgentRequestError, ...) escaped uncaught on this
+                # background thread -- which Python just silently kills. No crash log,
+                # no relaunch (_run_with_crash_recovery only supervises the main
+                # thread), just a GUI that keeps showing its last real status forever
+                # with last_seen_at frozen. Confirmed live: a heartbeat that landed
+                # during a backend container restart's brief connection-refused
+                # window did exactly this -- the agent never recovered on its own
+                # until manually relaunched, even minutes after the backend was
+                # healthy again. Log and keep looping instead.
+                set_status("Heartbeat failed", f"Unexpected error: {exc}")
+                log(f"Heartbeat cycle failed unexpectedly: {exc}")
             try:
-                _collect_and_ship(base, agent_id, agent_key, state, log_fn=log, allow_auto_fix_prompt=True)
+                _collect_and_ship(conn, agent_id, agent_key, state, log_fn=log, allow_auto_fix_prompt=True)
             except Exception as exc:  # noqa: BLE001 — deliberately broad: this call used
                 # to sit outside any try/except, so anything it raised (not just
                 # AgentRequestError — e.g. a transient OSError from a Windows Event
@@ -1553,55 +1984,86 @@ def run_gui(base: str, agent_id: str, agent_key: str) -> None:
 # the first AgentRequestError, which is fine for an interactive terminal
 # session but would silently kill an unattended background agent over one
 # transient network blip.
-def run_silent(base: str, agent_id: str, agent_key: str) -> None:
+def run_silent(config: dict, agent_id: str, agent_key: str) -> None:
+    conn = _conn_from_config(config)
     hostname = socket.gethostname()
 
     # A Docker cold-start after a reboot routinely takes 30s-2min+ to become
-    # reachable — retry the initial registration with backoff for up to
-    # ~5 minutes before giving up, rather than failing permanently until the
-    # next login over a race the first few seconds can't realistically win.
+    # reachable, so this retries with backoff. Unlike run_gui's connect flow,
+    # run_silent has no user watching and no "next login" to fall back on if
+    # this process is the one already running post-wake/post-reboot (the
+    # Registry Run key only fires at login, not on every resume/relaunch) --
+    # giving up here would mean nothing ever brings the agent back except a
+    # human logging in again, so give_up_after_seconds=None keeps retrying
+    # indefinitely at the capped interval instead, matching the same
+    # never-silently-die posture as the heartbeat loop just below.
     try:
         agent = _register_with_retry(
-            base, agent_id, agent_key, hostname,
+            conn,
+            agent_id,
+            agent_key,
+            hostname,
             on_retry=lambda attempt, delay, exc: _write_status("Connection failed", str(exc), agent_id),
+            give_up_after_seconds=None,
         )
     except AgentCredentialsError as exc:
         _write_status("Connection failed", str(exc), agent_id)
         return
-    if agent is None:
-        return  # gave up after ~5 min — the next login tries again
 
     _write_status("Connected", f"{agent['hostname']} · registered", agent_id)
-    _ensure_local_config_persisted(base, agent_id, agent_key)
+    _ensure_local_config_persisted(config)
     _ensure_windows_autostart(log_fn=lambda _msg: None)
+    _maybe_activate_hub_mode(conn, agent_id, agent_key, agent.get("is_primary", False), lambda _msg: None)
 
     state = _load_state()
     while True:
         time.sleep(HEARTBEAT_INTERVAL_SECONDS)
         try:
-            beat = _post(f"{base}/agents/{agent_id}/heartbeat", agent_key, {})
+            beat = _heartbeat(conn, agent_id, agent_key, relay_listen_addr=_current_relay_listen_addr())
             _write_status("Connected", f"last heartbeat {beat['last_seen_at']}", agent_id)
+            _maybe_activate_hub_mode(conn, agent_id, agent_key, beat.get("is_primary", False), lambda _msg: None)
         except AgentRequestError as exc:
             _write_status("Heartbeat failed", str(exc), agent_id)
+        except Exception as exc:  # noqa: BLE001 — see worker()'s identical guard for the full
+            # rationale: an exception here other than AgentRequestError used to escape
+            # uncaught on this thread and silently wedge the agent forever (no crash
+            # log, no relaunch, no further heartbeats) instead of just failing this
+            # one cycle and trying again next time.
+            _write_status("Heartbeat failed", f"Unexpected error: {exc}", agent_id)
         try:
-            _collect_and_ship(base, agent_id, agent_key, state, log_fn=lambda _msg: None)
+            _collect_and_ship(conn, agent_id, agent_key, state, log_fn=lambda _msg: None)
         except Exception as exc:  # noqa: BLE001 — see worker()'s identical guard above
             _write_status("Collection failed", str(exc), agent_id)
 
 
-def _validate_connect_fields(url: str, agent_id: str, agent_key: str) -> dict | None:
-    url = url.strip().rstrip("/")
+def _validate_connect_fields(address: str, agent_id: str, agent_key: str, *, relay: bool = False) -> dict | None:
+    address = address.strip().rstrip("/")
     agent_id = agent_id.strip()
     agent_key = agent_key.strip()
-    if not url or not agent_id or not agent_key:
+    if not address or not agent_id or not agent_key:
         return None
-    return {"url": url, "id": agent_id, "key": agent_key}
+    if relay:
+        # See _conn_from_config -- this is the one config shape relay mode
+        # needs beyond what direct-connect already has: no "url" at all,
+        # since this device is never meant to reach the real backend itself.
+        return {"relay_mode": True, "hub_relay_url": address, "id": agent_id, "key": agent_key}
+    return {"url": address, "id": agent_id, "key": agent_key}
 
 
 # Shown when no config was found (installer path — a generic Setup.exe, same
 # for every org, has nothing embedded). The dashboard's enrollment panel
-# shows these same three values with copy buttons, so this is a paste, not a
-# lookup. Returns None if the window is closed without connecting.
+# shows these same three values (or, for a relay child, the hub's LAN
+# address in place of a Server URL — see the "Deploy a device under <hub>"
+# flow) with copy buttons, so this is a paste, not a lookup. Returns None if
+# the window is closed without connecting.
+#
+# "Connect directly to server" vs "Connect through a hub on this network" is
+# the one connection choice made here, and only here -- a *hub* device is
+# never chosen at install time (see this file's hub-relay-listener section
+# above); it's always installed the plain direct way and only starts acting
+# as a hub afterward, once the dashboard's existing "Mark as primary" toggle
+# is flipped and this same process learns is_primary=True on its own next
+# register/heartbeat.
 def _show_connect_form() -> dict | None:
     import tkinter as tk
 
@@ -1612,32 +2074,59 @@ def _show_connect_form() -> dict | None:
     _set_window_icon(root)
 
     tk.Label(root, text="Connect this agent", font=("Segoe UI", 13, "bold")).pack(pady=(16, 4), padx=16)
-    tk.Label(
-        root,
-        text="Paste the Server URL, Agent ID, and Enrollment Key shown\non the dashboard's agent enrollment screen.",
-        font=("Segoe UI", 9),
-        fg="#666666",
-        justify="left",
-    ).pack(padx=16, pady=(0, 12))
+
+    mode_var = tk.StringVar(value="direct")
+    mode_frame = tk.Frame(root)
+    mode_frame.pack(padx=16, pady=(0, 8), anchor="w")
+    tk.Radiobutton(mode_frame, text="Connect directly to server", variable=mode_var, value="direct").pack(anchor="w")
+    tk.Radiobutton(mode_frame, text="Connect through a hub on this network", variable=mode_var, value="relay").pack(
+        anchor="w"
+    )
+
+    address_label_var = tk.StringVar(
+        value="Paste the Server URL, Agent ID, and Enrollment Key shown\non the dashboard's agent enrollment screen."
+    )
+    hint_label = tk.Label(root, textvariable=address_label_var, font=("Segoe UI", 9), fg="#666666", justify="left")
+    hint_label.pack(padx=16, pady=(0, 12))
 
     form = tk.Frame(root)
     form.pack(padx=16, pady=(0, 4))
 
-    url_var = tk.StringVar()
+    address_var = tk.StringVar()
     id_var = tk.StringVar()
     key_var = tk.StringVar()
     error_var = tk.StringVar()
 
-    fields = [("Server URL", url_var, None), ("Agent ID", id_var, None), ("Enrollment Key", key_var, "*")]
-    for row, (label_text, var, show) in enumerate(fields):
+    address_field_label = tk.StringVar(value="Server URL")
+    tk.Label(form, textvariable=address_field_label, font=("Segoe UI", 9)).grid(row=0, column=0, sticky="w", pady=4)
+    tk.Entry(form, textvariable=address_var, width=36).grid(row=0, column=1, pady=4, padx=(8, 0))
+    fields = [("Agent ID", id_var, None), ("Enrollment Key", key_var, "*")]
+    for row, (label_text, var, show) in enumerate(fields, start=1):
         tk.Label(form, text=label_text, font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", pady=4)
         tk.Entry(form, textvariable=var, width=36, show=show or "").grid(row=row, column=1, pady=4, padx=(8, 0))
+
+    def on_mode_change(*_args) -> None:
+        if mode_var.get() == "relay":
+            address_field_label.set("Hub address")
+            address_label_var.set(
+                "Paste the hub's local network address (shown on the dashboard's\n"
+                '"Deploy a device under <hub>" screen), plus the Agent ID and\nEnrollment Key from that same screen.'
+            )
+        else:
+            address_field_label.set("Server URL")
+            address_label_var.set(
+                "Paste the Server URL, Agent ID, and Enrollment Key shown\non the dashboard's agent enrollment screen."
+            )
+
+    mode_var.trace_add("write", on_mode_change)
 
     tk.Label(root, textvariable=error_var, font=("Segoe UI", 8), fg="#c0392b").pack(padx=16)
 
     def on_connect() -> None:
         nonlocal result
-        validated = _validate_connect_fields(url_var.get(), id_var.get(), key_var.get())
+        validated = _validate_connect_fields(
+            address_var.get(), id_var.get(), key_var.get(), relay=mode_var.get() == "relay"
+        )
         if validated is None:
             error_var.set("All three fields are required.")
             return
@@ -1682,7 +2171,7 @@ def main() -> None:
 
     if all(cli_fields):
         if args.silent:
-            run_silent(args.url.rstrip("/"), args.agent_id, args.agent_key)
+            run_silent({"url": args.url.rstrip("/")}, args.agent_id, args.agent_key)
         else:
             run_cli(args.url.rstrip("/"), args.agent_id, args.agent_key)
         return
@@ -1710,8 +2199,12 @@ def main() -> None:
         if config is None:
             sys.exit(0)
 
+    # Cert pinning only means anything for a direct TLS connection to the
+    # real backend -- a relay child's config has no "url" at all (see
+    # _validate_connect_fields), and its actual traffic is a LAN-local hop
+    # to the hub, not a connection this setting was ever meant to protect.
     pinned_sha256 = config.get("pinned_cert_sha256")
-    if pinned_sha256 and not _verify_pinned_cert(config["url"], pinned_sha256):
+    if pinned_sha256 and not config.get("relay_mode") and not _verify_pinned_cert(config["url"], pinned_sha256):
         if args.silent:
             _write_status(
                 "Connection failed", "Pinned certificate mismatch — refusing to connect.", config.get("id", "unknown")
@@ -1721,9 +2214,9 @@ def main() -> None:
         sys.exit(1)
 
     if args.silent:
-        run_silent(config["url"].rstrip("/"), config["id"], config["key"])
+        run_silent(config, config["id"], config["key"])
     else:
-        run_gui(config["url"].rstrip("/"), config["id"], config["key"])
+        run_gui(config, config["id"], config["key"])
 
 
 def _load_crash_timestamps() -> list[float]:

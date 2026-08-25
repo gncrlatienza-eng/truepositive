@@ -13,6 +13,10 @@ class IncidentStatus(enum.StrEnum):
     OPEN = "open"
     INVESTIGATING = "investigating"
     RESOLVED = "resolved"
+    # Distinct from RESOLVED: the incident was a false alarm, not a handled
+    # threat. Kept separate (rather than folded into RESOLVED) so this has its
+    # own signal for detection-rule tuning / a future false-positive-rate metric.
+    FALSE_POSITIVE = "false_positive"
 
 
 class IncidentEventKind(enum.StrEnum):

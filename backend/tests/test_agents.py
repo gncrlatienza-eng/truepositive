@@ -89,6 +89,51 @@ def test_register_and_heartbeat(client, auth_headers):
     assert beat.json()["status"] == "connected"
 
 
+def test_heartbeat_persists_reported_capabilities(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    client.post(f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": key})
+
+    # Before any heartbeat reports a value, both fields are None -- "not yet
+    # reported", not "false" (LocalSourcePicker falls back to a static badge
+    # on None, and would wrongly show "will prompt for setup" on False).
+    before = client.get(f"/agents/{agent_id}", headers=auth_headers)
+    assert before.json()["event_log_reader_member"] is None
+    assert before.json()["sysmon_installed"] is None
+
+    beat = client.post(
+        f"/agents/{agent_id}/heartbeat",
+        json={"event_log_reader_member": True, "sysmon_installed": False},
+        headers={"X-Agent-Key": key},
+    )
+    assert beat.status_code == 200
+
+    after = client.get(f"/agents/{agent_id}", headers=auth_headers)
+    assert after.json()["event_log_reader_member"] is True
+    assert after.json()["sysmon_installed"] is False
+    assert after.json()["capabilities_checked_at"] is not None
+
+
+def test_heartbeat_without_capabilities_keeps_previous_value(client, auth_headers):
+    created = _create_agent(client, auth_headers)
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    client.post(f"/agents/{agent_id}/register", json={"hostname": "h"}, headers={"X-Agent-Key": key})
+    client.post(
+        f"/agents/{agent_id}/heartbeat",
+        json={"event_log_reader_member": True, "sysmon_installed": True},
+        headers={"X-Agent-Key": key},
+    )
+
+    # A later heartbeat that omits these (e.g. throttled on the agent side,
+    # see tp_agent.py's _capabilities_for_heartbeat) must not blow away the
+    # value a previous heartbeat already recorded.
+    client.post(f"/agents/{agent_id}/heartbeat", headers={"X-Agent-Key": key})
+
+    after = client.get(f"/agents/{agent_id}", headers=auth_headers)
+    assert after.json()["event_log_reader_member"] is True
+    assert after.json()["sysmon_installed"] is True
+
+
 def test_register_after_expiry_410(client, auth_headers, db_session):
     created = _create_agent(client, auth_headers)
     agent_id, key = created["agent"]["id"], created["enrollment_key"]

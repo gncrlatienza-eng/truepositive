@@ -184,6 +184,35 @@ def test_list_logs_filters_by_severity_and_search(client, auth_headers):
     assert by_search["items"][0]["event_type"] == "B"
 
 
+def test_list_logs_filters_by_agent_id(client, auth_headers):
+    # Backs the dashboard's Scope Switcher -- narrowing to one device's own
+    # logs must never leak another device's, even in the same org.
+    first = _create_agent(client, auth_headers, name="dc-01")
+    second = _create_agent(client, auth_headers, name="dc-02")
+    first_id, first_key = first["agent"]["id"], first["enrollment_key"]
+    second_id, second_key = second["agent"]["id"], second["enrollment_key"]
+    first_source = _create_local_source(client, auth_headers, first_id)
+    second_source = _create_local_source(client, auth_headers, second_id)
+
+    client.post(
+        f"/agents/{first_id}/logs",
+        json={"logs": [_log_entry(first_source["id"], message="from-first")]},
+        headers={"X-Agent-Key": first_key},
+    )
+    client.post(
+        f"/agents/{second_id}/logs",
+        json={"logs": [_log_entry(second_source["id"], message="from-second")]},
+        headers={"X-Agent-Key": second_key},
+    )
+
+    scoped = client.get("/logs", params={"agent_id": first_id}, headers=auth_headers).json()
+    assert scoped["total"] == 1
+    assert scoped["items"][0]["message"] == "from-first"
+
+    all_logs = client.get("/logs", headers=auth_headers).json()
+    assert all_logs["total"] == 2
+
+
 def test_get_log_and_cross_org_404(client, auth_headers, second_org_headers):
     created = _create_agent(client, auth_headers)
     agent_id, key = created["agent"]["id"], created["enrollment_key"]

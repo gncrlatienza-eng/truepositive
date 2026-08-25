@@ -1,18 +1,45 @@
 import logging
+from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routes import agents, alerts, auth, dashboard, incidents, intel, logs, playbooks, reports
 from app.routes import settings as settings_route
+from app.services.report_scheduler import run_scheduled_reports
 
 # Root logger defaults to WARNING with no handlers, which silently drops the
 # INFO-level app.services.playbook_service "[PLAYBOOK ACTION]" lines that are
 # this app's only observable record of a stub automation action having fired.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-app = FastAPI(title="TruePositive API")
+# In-process, safe only because the backend runs as a single container with
+# no replica scaling (see docker-compose.yml/.prod.yml) -- a scaled-out
+# deployment would need to move this to a real job queue to avoid every
+# replica firing the same job.
+scheduler = BackgroundScheduler(timezone="UTC")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    scheduler.add_job(run_scheduled_reports, CronTrigger(hour=0, minute=15), args=["daily"], id="report_daily")
+    scheduler.add_job(
+        run_scheduled_reports, CronTrigger(day_of_week="mon", hour=0, minute=15), args=["weekly"], id="report_weekly"
+    )
+    scheduler.add_job(
+        run_scheduled_reports, CronTrigger(day=1, hour=0, minute=15), args=["monthly"], id="report_monthly"
+    )
+    scheduler.start()
+    try:
+        yield
+    finally:
+        scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="TruePositive API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

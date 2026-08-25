@@ -65,7 +65,7 @@ class IncidentOut(BaseModel):
         """Build an IncidentOut with the computed alert_count and sla_breached fields."""
         now = datetime.now(UTC)
         age_hours = (now - incident.created_at.replace(tzinfo=UTC)).total_seconds() / 3600
-        if incident.status == IncidentStatus.RESOLVED:
+        if incident.status in (IncidentStatus.RESOLVED, IncidentStatus.FALSE_POSITIVE):
             sla_breached = False
         elif incident.status == IncidentStatus.INVESTIGATING:
             sla_breached = age_hours > INVESTIGATING_SLA_HOURS

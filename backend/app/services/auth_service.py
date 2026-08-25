@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.org import Org
 from app.models.user import User, UserRole
 from app.schemas.auth import LoginRequest, SignupRequest
@@ -10,6 +11,14 @@ from app.utils.security import create_access_token, hash_password, verify_passwo
 
 
 def signup(db: Session, payload: SignupRequest) -> tuple[str, User, Org]:
+    # Checked before any lookup so a wrong/missing code never reveals
+    # whether an email or slug is already taken. Only enforced once an admin
+    # has actually set SIGNUP_INVITE_CODE (public-deployment opt-in) — the
+    # existing per-IP signup rate limit (5/min, see routes/auth.py) already
+    # bounds brute-forcing the code itself.
+    if settings.signup_invite_required and payload.invite_code != settings.signup_invite_code:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid invite code")
+
     if db.scalar(select(User).where(User.email == payload.email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
     if db.scalar(select(Org).where(Org.slug == payload.workspace_slug)):

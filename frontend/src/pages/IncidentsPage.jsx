@@ -19,6 +19,7 @@ const STATUS_COLORS = {
   open: theme.color.textMuted,
   investigating: theme.color.severity.high,
   resolved: theme.color.severity.ok,
+  false_positive: theme.color.textFaint,
 };
 
 export default function IncidentsPage() {
@@ -158,7 +159,7 @@ export default function IncidentsPage() {
       key: "sla",
       label: "SLA",
       render: (r) =>
-        r.status === "resolved" ? null : r.sla_breached ? (
+        r.status === "resolved" || r.status === "false_positive" ? null : r.sla_breached ? (
           <span style={{ color: theme.color.severity.critical, fontSize: 12, fontWeight: 600 }}>⚠ Breached</span>
         ) : (
           <span style={{ color: theme.color.severity.ok, fontSize: 12 }}>OK</span>
@@ -274,6 +275,7 @@ export default function IncidentsPage() {
                       <option value="open">Open</option>
                       <option value="investigating">Investigating</option>
                       <option value="resolved">Resolved</option>
+                      <option value="false_positive">False positive</option>
                     </Select>
                   </FieldLabel>
                 </div>

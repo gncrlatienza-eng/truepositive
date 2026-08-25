@@ -158,6 +158,21 @@ export default function AgentCredentialsCard({ agent, enrollmentKey, platform, e
             uninstaller under Settings → Apps. After installing, open the app and paste in the Server URL, Agent ID, and
             Enrollment key above.
           </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: theme.color.textFaint,
+              background: theme.color.background,
+              border: `1px solid ${theme.color.border}`,
+              borderRadius: theme.radius.sm,
+              padding: theme.space[3],
+              marginBottom: theme.space[3],
+            }}
+          >
+            Windows may show a &quot;Windows protected your PC&quot; warning before the installer runs — that&apos;s
+            because this installer isn&apos;t code-signed yet, not a sign anything is wrong. Click{" "}
+            <strong>More info</strong> → <strong>Run anyway</strong> to continue.
+          </div>
           <details>
             <summary style={{ cursor: "pointer", fontSize: 13, color: theme.color.textMuted }}>
               Advanced: portable .exe or run manually via Python
@@ -173,7 +188,8 @@ export default function AgentCredentialsCard({ agent, enrollmentKey, platform, e
               </OutlineButton>
               <div style={{ fontSize: 13, color: theme.color.textFaint, marginBottom: theme.space[3] }}>
                 Downloads <code>truepositive-agent.exe</code> directly, already configured for this agent — nothing to
-                paste, but no Start Menu entry or uninstaller either.
+                paste, but no Start Menu entry or uninstaller either. Same unsigned-binary SmartScreen warning as above
+                applies here too.
               </div>
               <div style={cmdBoxStyle}>$ {installCmd}</div>
             </div>

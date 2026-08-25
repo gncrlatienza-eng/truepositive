@@ -5,6 +5,65 @@ import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { deleteWhitelistEntry, listWhitelist } from "../../api/whitelist";
 import ConfirmModal from "../common/ConfirmModal";
 import AddWhitelistEntryModal from "./AddWhitelistEntryModal";
+import { useDelayedHover } from "../../hooks/useDelayedHover";
+
+function EntryRow({ entry: e, delayMs, onRemove }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={["tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space[3],
+        padding: theme.space[3],
+        border: `1px solid ${theme.color.border}`,
+        borderRadius: theme.radius.md,
+        background: theme.color.surface,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          padding: "3px 10px",
+          borderRadius: 999,
+          border: `1px solid ${theme.color.border}`,
+          color: theme.color.textMuted,
+          textTransform: "uppercase",
+        }}
+      >
+        {e.type}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontFamily: theme.font.mono }}>{e.value}</div>
+        <div style={{ fontSize: 12, color: theme.color.textFaint }}>
+          {e.reason && `${e.reason} · `}added {new Date(e.created_at).toLocaleDateString()} by {e.created_by_email}
+        </div>
+      </div>
+      {e.expires_at && (
+        <span
+          style={{
+            fontSize: 12,
+            color: e.is_active ? theme.color.textMuted : theme.color.severity.critical,
+          }}
+        >
+          {e.is_active ? "expires" : "expired"} {new Date(e.expires_at).toLocaleDateString()}
+        </span>
+      )}
+      <OutlineButton
+        type="button"
+        style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
+        onClick={() => onRemove(e)}
+      >
+        Remove
+      </OutlineButton>
+    </div>
+  );
+}
 
 export default function WhitelistTab() {
   const [mode, setMode] = useState("allow");
@@ -32,7 +91,15 @@ export default function WhitelistTab() {
     }
   }
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="tp-intel-skeleton" style={{ height: 52, borderRadius: theme.radius.md }} />
+        ))}
+      </div>
+    );
+  }
 
   // Every existing entry defaults to kind="allow" (the column's own DB
   // default, for entries created before Sprint 8) — filtering on that
@@ -56,6 +123,7 @@ export default function WhitelistTab() {
             cursor: "pointer",
             fontSize: 13,
             fontWeight: 600,
+            transition: "border-color 150ms ease, background 150ms ease",
           }}
         >
           ALLOWLIST
@@ -73,6 +141,7 @@ export default function WhitelistTab() {
             cursor: "pointer",
             fontSize: 13,
             fontWeight: 600,
+            transition: "border-color 150ms ease, background 150ms ease",
           }}
         >
           BLOCKLIST
@@ -102,57 +171,8 @@ export default function WhitelistTab() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
-          {filtered.map((e) => (
-            <div
-              key={e.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: theme.space[3],
-                padding: theme.space[3],
-                border: `1px solid ${theme.color.border}`,
-                borderRadius: theme.radius.md,
-                background: theme.color.surface,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "3px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${theme.color.border}`,
-                  color: theme.color.textMuted,
-                  textTransform: "uppercase",
-                }}
-              >
-                {e.type}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontFamily: theme.font.mono }}>{e.value}</div>
-                <div style={{ fontSize: 12, color: theme.color.textFaint }}>
-                  {e.reason && `${e.reason} · `}added {new Date(e.created_at).toLocaleDateString()} by{" "}
-                  {e.created_by_email}
-                </div>
-              </div>
-              {e.expires_at && (
-                <span
-                  style={{
-                    fontSize: 12,
-                    color: e.is_active ? theme.color.textMuted : theme.color.severity.critical,
-                  }}
-                >
-                  {e.is_active ? "expires" : "expired"} {new Date(e.expires_at).toLocaleDateString()}
-                </span>
-              )}
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
-                onClick={() => setConfirmTarget(e)}
-              >
-                Remove
-              </OutlineButton>
-            </div>
+          {filtered.map((e, idx) => (
+            <EntryRow key={e.id} entry={e} delayMs={idx * 30} onRemove={setConfirmTarget} />
           ))}
         </div>
       )}

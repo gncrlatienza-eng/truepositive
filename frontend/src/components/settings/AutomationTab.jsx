@@ -5,6 +5,7 @@ import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import ConfirmModal from "../common/ConfirmModal";
 import PlaybookFormModal from "./PlaybookFormModal";
 import { Badge } from "../common/Badge";
+import { useDelayedHover } from "../../hooks/useDelayedHover";
 
 function triggerSummary(pb) {
   const parts = [];
@@ -21,6 +22,80 @@ function actionSummary(pb) {
   if (a.disable_account) active.push("disable account (stub)");
   if (a.slack_notify) active.push("Slack notify (stub)");
   return active.length ? active.join(", ") : "No actions";
+}
+
+function PlaybookRow({ playbook: pb, selected, onToggleSelected, onEdit, onDelete, delayMs }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={["tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: theme.space[3],
+        padding: theme.space[3],
+        border: `1px solid ${theme.color.border}`,
+        borderRadius: theme.radius.md,
+        background: theme.color.surface,
+        opacity: pb.enabled ? 1 : 0.6,
+      }}
+    >
+      <input type="checkbox" checked={selected} onChange={() => onToggleSelected(pb.id)} style={{ marginTop: 3 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.space[2],
+            marginBottom: 4,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pb.name}
+          </span>
+          <Badge color={pb.enabled ? theme.color.severity.ok : theme.color.textMuted}>
+            {pb.enabled ? "enabled" : "disabled"}
+          </Badge>
+        </div>
+        <div style={{ fontSize: 12, color: theme.color.textMuted }}>
+          <span style={{ fontWeight: 600 }}>Trigger:</span> {triggerSummary(pb)}
+        </div>
+        <div style={{ fontSize: 12, color: theme.color.textMuted }}>
+          <span style={{ fontWeight: 600 }}>Actions:</span> {actionSummary(pb)}
+        </div>
+      </div>
+      <OutlineButton
+        type="button"
+        style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+        onClick={() => onEdit(pb)}
+      >
+        Edit
+      </OutlineButton>
+      <OutlineButton
+        type="button"
+        style={{
+          width: "auto",
+          padding: "6px 12px",
+          fontSize: 13,
+          color: theme.color.severity.critical,
+        }}
+        onClick={() => onDelete(pb)}
+      >
+        Delete
+      </OutlineButton>
+    </div>
+  );
 }
 
 export default function AutomationTab() {
@@ -98,7 +173,15 @@ export default function AutomationTab() {
     }
   }
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="tp-intel-skeleton" style={{ height: 68, borderRadius: theme.radius.md }} />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -191,77 +274,16 @@ export default function AutomationTab() {
         <div style={{ fontSize: 14, color: theme.color.textFaint }}>No playbooks match.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
-          {filtered.map((pb) => (
-            <div
+          {filtered.map((pb, idx) => (
+            <PlaybookRow
               key={pb.id}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: theme.space[3],
-                padding: theme.space[3],
-                border: `1px solid ${theme.color.border}`,
-                borderRadius: theme.radius.md,
-                background: theme.color.surface,
-                opacity: pb.enabled ? 1 : 0.6,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(pb.id)}
-                onChange={() => toggleSelected(pb.id)}
-                style={{ marginTop: 3 }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: theme.space[2],
-                    marginBottom: 4,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 600,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {pb.name}
-                  </span>
-                  <Badge color={pb.enabled ? theme.color.severity.ok : theme.color.textMuted}>
-                    {pb.enabled ? "enabled" : "disabled"}
-                  </Badge>
-                </div>
-                <div style={{ fontSize: 12, color: theme.color.textMuted }}>
-                  <span style={{ fontWeight: 600 }}>Trigger:</span> {triggerSummary(pb)}
-                </div>
-                <div style={{ fontSize: 12, color: theme.color.textMuted }}>
-                  <span style={{ fontWeight: 600 }}>Actions:</span> {actionSummary(pb)}
-                </div>
-              </div>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                onClick={() => setModalPb(pb)}
-              >
-                Edit
-              </OutlineButton>
-              <OutlineButton
-                type="button"
-                style={{
-                  width: "auto",
-                  padding: "6px 12px",
-                  fontSize: 13,
-                  color: theme.color.severity.critical,
-                }}
-                onClick={() => setConfirmTarget(pb)}
-              >
-                Delete
-              </OutlineButton>
-            </div>
+              playbook={pb}
+              selected={selected.has(pb.id)}
+              onToggleSelected={toggleSelected}
+              onEdit={setModalPb}
+              onDelete={setConfirmTarget}
+              delayMs={idx * 30}
+            />
           ))}
         </div>
       )}

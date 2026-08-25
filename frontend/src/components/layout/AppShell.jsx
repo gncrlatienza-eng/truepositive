@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { theme } from "../../styles/theme";
 import { getCriticalPanel } from "../../api/dashboard";
 import { ErrorBoundary } from "../common/ErrorBoundary";
+import ScopeSwitcher from "../ScopeSwitcher/ScopeSwitcher";
 import TopBar from "./TopBar";
 import Sidebar from "./Sidebar";
 
@@ -62,6 +63,7 @@ export default function AppShell() {
           <Outlet />
         </ErrorBoundary>
       </div>
+      <ScopeSwitcher />
     </div>
   );
 }

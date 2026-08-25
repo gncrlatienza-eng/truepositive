@@ -198,6 +198,14 @@ export default function ConnectSourceModal({ open, onClose, onSaved, agents, sou
                 key={`${selectedPlatform}-${form.agentId}`}
                 platform={selectedPlatform}
                 existingPaths={existingPaths}
+                agentCapabilities={
+                  selectedAgent
+                    ? {
+                        event_log_reader_member: selectedAgent.event_log_reader_member,
+                        sysmon_installed: selectedAgent.sysmon_installed,
+                      }
+                    : null
+                }
                 onChange={setLocalSources}
               />
             )}

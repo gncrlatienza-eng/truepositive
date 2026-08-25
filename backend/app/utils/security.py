@@ -76,4 +76,16 @@ def get_current_agent(
     agent = db.get(Agent, agent_id)
     if agent is None or not verify_password(agent_key, agent.agent_key_hash):
         raise unauthorized
+    if agent.relay_parent_agent_id is not None:
+        # A relay child must never authenticate directly against the
+        # internet-facing backend -- this is what actually enforces the
+        # "full isolation" design invariant (relay_service.py's own
+        # docstring: "a relay child never talks to the internet-facing
+        # backend directly"), which before this check was only a client-side
+        # convention (the agent binary's own choice of which URL to call),
+        # not something the server verified. Its only legitimate path in is
+        # via its hub's authenticated POST .../relay-proxy call. Never
+        # rejects a hub itself here -- a hub's own relay_parent_agent_id is
+        # always None (relay_service._require_hub already forbids chaining).
+        raise unauthorized
     return agent

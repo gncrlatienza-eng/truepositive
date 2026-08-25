@@ -8,8 +8,8 @@ const SIZES = {
 
 const VARIANTS = {
   // primary is the one variant that needs to visually pop, so it stays a
-  // solid fill — white text, since the accent (#0890b1, the logo's own
-  // teal) isn't light enough for dark text to read cleanly. danger/safe
+  // solid fill — white text reads cleanly on the accent regardless of its
+  // exact shade (see theme.js for the current value/history). danger/safe
   // are tinted+outlined per the flat design spec (a solid red/green fill
   // read as a warning label, not a button) — border set inline since it
   // needs to survive regardless of class cascade order.

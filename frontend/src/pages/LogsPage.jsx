@@ -4,6 +4,7 @@ import { BookOpen } from "lucide-react";
 import { theme } from "../styles/theme";
 import { exportLogsCsv, listLogs } from "../api/logs";
 import { listSources } from "../api/sources";
+import { useScope } from "../context/ScopeContext";
 import { SetupLockOverlay } from "../components/common/SetupLockOverlay";
 import { Card } from "../components/common/Card";
 import { Button } from "../components/common/Button";
@@ -32,6 +33,8 @@ function sinceFor(hours) {
 
 export default function LogsPage() {
   const showToast = useToast();
+  const { scope } = useScope();
+  const scopedAgentId = scope.mode === "agent" ? scope.agentId : undefined;
   const [sources, setSources] = useState([]);
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
@@ -44,6 +47,11 @@ export default function LogsPage() {
   const [severity, setSeverity] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [hourFilter, setHourFilter] = useState("all");
+  // Set from the log detail modal's "View ±Nm window" action — a contextual
+  // since/until pair that overrides hourFilter's presets while active, so
+  // "what else happened right around this event" doesn't require rebuilding
+  // filters by hand. Cleared back to hourFilter via the chip's own close.
+  const [customWindow, setCustomWindow] = useState(null);
   // Real server-side pagination, not a client-side slice of a capped fetch
   // — with a few hundred logs, the old `limit: 100` fetch-once approach
   // silently made anything past the 100 most recent unreachable from the
@@ -60,8 +68,14 @@ export default function LogsPage() {
       if (q) params.q = q;
       if (severity) params.severity = severity;
       if (sourceId) params.source_id = sourceId;
-      const since = sinceFor(HOUR_FILTERS.find((h) => h.key === hourFilter)?.hours);
-      if (since) params.since = since;
+      if (scopedAgentId) params.agent_id = scopedAgentId;
+      if (customWindow) {
+        params.since = customWindow.since;
+        params.until = customWindow.until;
+      } else {
+        const since = sinceFor(HOUR_FILTERS.find((h) => h.key === hourFilter)?.hours);
+        if (since) params.since = since;
+      }
 
       return listLogs(params)
         .then((data) => {
@@ -72,7 +86,7 @@ export default function LogsPage() {
           if (!silent) setLoading(false);
         });
     },
-    [q, severity, sourceId, hourFilter, page],
+    [q, severity, sourceId, hourFilter, customWindow, page, scopedAgentId],
   );
 
   useEffect(() => {
@@ -80,6 +94,10 @@ export default function LogsPage() {
       .then(setSources)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setPage(0);
+  }, [scopedAgentId]);
 
   useEffect(() => {
     refresh().catch(() => showToast("Could not load logs.", "error"));
@@ -93,14 +111,37 @@ export default function LogsPage() {
     return () => clearInterval(interval);
   }, [refresh, showToast]);
 
+  function handleFilterBySource(newSourceId) {
+    setCustomWindow(null);
+    setSourceId(newSourceId);
+    setPage(0);
+  }
+
+  function handleFilterByWindow(timestamp, windowMinutes) {
+    const center = new Date(timestamp).getTime();
+    const spanMs = windowMinutes * 60 * 1000;
+    setCustomWindow({
+      since: new Date(center - spanMs).toISOString(),
+      until: new Date(center + spanMs).toISOString(),
+      label: `±${windowMinutes}m around ${formatTimestamp(timestamp)}`,
+    });
+    setPage(0);
+  }
+
   async function handleExport() {
     try {
       const params = {};
       if (q) params.q = q;
       if (severity) params.severity = severity;
       if (sourceId) params.source_id = sourceId;
-      const since = sinceFor(HOUR_FILTERS.find((h) => h.key === hourFilter)?.hours);
-      if (since) params.since = since;
+      if (scopedAgentId) params.agent_id = scopedAgentId;
+      if (customWindow) {
+        params.since = customWindow.since;
+        params.until = customWindow.until;
+      } else {
+        const since = sinceFor(HOUR_FILTERS.find((h) => h.key === hourFilter)?.hours);
+        if (since) params.since = since;
+      }
       await exportLogsCsv(params);
     } catch {
       showToast("Could not export logs.", "error");
@@ -295,6 +336,7 @@ export default function LogsPage() {
                   <FieldLabel label="Window">
                     <Select
                       value={hourFilter}
+                      disabled={!!customWindow}
                       onChange={(e) => {
                         setHourFilter(e.target.value);
                         setPage(0);
@@ -309,6 +351,39 @@ export default function LogsPage() {
                   </FieldLabel>
                 </div>
               </div>
+
+              {customWindow && (
+                <div
+                  className="tp-mini-pane-enter"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: theme.space[2],
+                    padding: `${theme.space[2]}px ${theme.space[4]}px`,
+                    borderBottom: `1px solid ${theme.color.border}`,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Badge color={theme.color.accent}>{customWindow.label}</Badge>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomWindow(null);
+                      setPage(0);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: theme.color.textMuted,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
 
               {!loading && (
                 <Table
@@ -329,6 +404,8 @@ export default function LogsPage() {
             open={!!selectedLog}
             onClose={() => setSelectedLog(null)}
             log={selectedLog}
+            onFilterBySource={handleFilterBySource}
+            onFilterByWindow={handleFilterByWindow}
             sourceName={selectedLog && sourceNameById[selectedLog.source_id]}
           />
         </div>

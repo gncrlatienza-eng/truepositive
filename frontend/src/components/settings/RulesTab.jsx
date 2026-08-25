@@ -5,6 +5,7 @@ import { createRule, deleteRule, listRules, updateRule } from "../../api/alerts"
 import { Badge, SeverityBadge } from "../common/Badge";
 import ConfirmModal from "../common/ConfirmModal";
 import RuleFormModal from "../rules/RuleFormModal";
+import { useDelayedHover } from "../../hooks/useDelayedHover";
 
 // Plain-English starter rules for people new to detection engineering — same
 // event_type taxonomy as scripts/seed_dashboard_data.py's EVENT_TYPES/RULES,
@@ -40,6 +41,108 @@ const STARTER_RULES = [
     severity: "medium",
   },
 ];
+
+function StarterRuleRow({ starter: s, adding, onAdd, delayMs }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={["tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space[3],
+        padding: theme.space[3],
+        border: `1px dashed ${theme.color.border}`,
+        borderRadius: theme.radius.md,
+      }}
+    >
+      <SeverityBadge severity={s.severity} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {s.name}
+        </div>
+        <div style={{ fontSize: 12, color: theme.color.textFaint }}>{s.why}</div>
+      </div>
+      <OutlineButton
+        type="button"
+        style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+        disabled={adding}
+        onClick={() => onAdd(s)}
+      >
+        {adding ? "Adding…" : "Add this rule"}
+      </OutlineButton>
+    </div>
+  );
+}
+
+function RuleRow({ rule: r, selected, onToggleSelected, onEdit, onDelete, delayMs }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={["tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space[3],
+        padding: theme.space[3],
+        border: `1px solid ${theme.color.border}`,
+        borderRadius: theme.radius.md,
+        background: theme.color.surface,
+        opacity: r.enabled ? 1 : 0.6,
+      }}
+    >
+      <input type="checkbox" checked={selected} onChange={() => onToggleSelected(r.id)} />
+      <SeverityBadge severity={r.severity} />
+      {r.mitre_technique && <Badge>{r.mitre_technique.split("—")[0].trim()}</Badge>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {r.name}
+        </div>
+        <div style={{ fontSize: 12, color: theme.color.textFaint }}>
+          {r.enabled ? "Enabled" : "Disabled"}
+          {r.conditions?.event_type && ` · event_type = "${r.conditions.event_type}"`}
+          {r.conditions?.min_severity && ` · min severity ${r.conditions.min_severity}`}
+        </div>
+      </div>
+      <OutlineButton
+        type="button"
+        style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+        onClick={() => onEdit(r)}
+      >
+        Edit
+      </OutlineButton>
+      <OutlineButton
+        type="button"
+        style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
+        onClick={() => onDelete(r)}
+      >
+        Delete
+      </OutlineButton>
+    </div>
+  );
+}
 
 export default function RulesTab() {
   const [rules, setRules] = useState([]);
@@ -131,7 +234,15 @@ export default function RulesTab() {
     }
   }
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="tp-intel-skeleton" style={{ height: 52, borderRadius: theme.radius.md }} />
+        ))}
+      </div>
+    );
+  }
 
   const addedNames = new Set(rules.map((r) => r.name));
   const suggestions = STARTER_RULES.filter((s) => !addedNames.has(s.name));
@@ -147,42 +258,14 @@ export default function RulesTab() {
             New to detection rules? Start with a few common ones — you can edit or delete any of these later.
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
-            {suggestions.map((s) => (
-              <div
+            {suggestions.map((s, idx) => (
+              <StarterRuleRow
                 key={s.name}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: theme.space[3],
-                  padding: theme.space[3],
-                  border: `1px dashed ${theme.color.border}`,
-                  borderRadius: theme.radius.md,
-                }}
-              >
-                <SeverityBadge severity={s.severity} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 600,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {s.name}
-                  </div>
-                  <div style={{ fontSize: 12, color: theme.color.textFaint }}>{s.why}</div>
-                </div>
-                <OutlineButton
-                  type="button"
-                  style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                  disabled={addingStarter === s.name}
-                  onClick={() => addStarterRule(s)}
-                >
-                  {addingStarter === s.name ? "Adding…" : "Add this rule"}
-                </OutlineButton>
-              </div>
+                starter={s}
+                adding={addingStarter === s.name}
+                onAdd={addStarterRule}
+                delayMs={idx * 30}
+              />
             ))}
           </div>
         </div>
@@ -252,56 +335,16 @@ export default function RulesTab() {
         <div style={{ fontSize: 14, color: theme.color.textFaint }}>No rules match.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
-          {filtered.map((r) => (
-            <div
+          {filtered.map((r, idx) => (
+            <RuleRow
               key={r.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: theme.space[3],
-                padding: theme.space[3],
-                border: `1px solid ${theme.color.border}`,
-                borderRadius: theme.radius.md,
-                background: theme.color.surface,
-                opacity: r.enabled ? 1 : 0.6,
-              }}
-            >
-              <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelected(r.id)} />
-              <SeverityBadge severity={r.severity} />
-              {r.mitre_technique && <Badge>{r.mitre_technique.split("—")[0].trim()}</Badge>}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {r.name}
-                </div>
-                <div style={{ fontSize: 12, color: theme.color.textFaint }}>
-                  {r.enabled ? "Enabled" : "Disabled"}
-                  {r.conditions?.event_type && ` · event_type = "${r.conditions.event_type}"`}
-                  {r.conditions?.min_severity && ` · min severity ${r.conditions.min_severity}`}
-                </div>
-              </div>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                onClick={() => setModalRule(r)}
-              >
-                Edit
-              </OutlineButton>
-              <OutlineButton
-                type="button"
-                style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
-                onClick={() => setConfirmTarget(r)}
-              >
-                Delete
-              </OutlineButton>
-            </div>
+              rule={r}
+              selected={selected.has(r.id)}
+              onToggleSelected={toggleSelected}
+              onEdit={setModalRule}
+              onDelete={setConfirmTarget}
+              delayMs={idx * 30}
+            />
           ))}
         </div>
       )}

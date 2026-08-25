@@ -8,6 +8,12 @@ export function getAlert(alertId) {
   return api.get(`/alerts/${alertId}`).then((r) => r.data);
 }
 
+// Manual escalation path — an analyst raising an alert from something the
+// rule engine didn't flag (see LogDetailModal's "Create alert" action).
+export function createAlert(payload) {
+  return api.post("/alerts", payload).then((r) => r.data);
+}
+
 export function updateAlert(alertId, payload) {
   return api.patch(`/alerts/${alertId}`, payload).then((r) => r.data);
 }

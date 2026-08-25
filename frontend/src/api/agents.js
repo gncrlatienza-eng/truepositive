@@ -23,3 +23,12 @@ export function rotateAgentKey(agentId) {
 export function setPrimaryAgent(agentId) {
   return api.post(`/agents/${agentId}/primary`).then((r) => r.data);
 }
+
+// Phase 1 manual pairing: creates the child's credentials directly (same
+// trust model as createAgent above — generating this from the dashboard is
+// itself the authorization), tagged as belonging to the given hub. Response
+// also carries hub_relay_addr, the hub's most recently reported LAN address
+// (null until the hub has heartbeated with one at least once).
+export function createRelayChild(payload) {
+  return api.post("/agents/relay-children", payload).then((r) => r.data);
+}

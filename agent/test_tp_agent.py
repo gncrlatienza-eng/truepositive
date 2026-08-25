@@ -1,4 +1,5 @@
 import io
+import threading
 import urllib.error
 from unittest.mock import call, patch
 
@@ -23,8 +24,9 @@ def _fake_result(returncode, stdout="", stderr=""):
 def test_no_new_events_does_not_warn():
     tp_agent._warned_channels.clear()
     warnings = []
-    with patch("tp_agent.shutil.which", return_value="wevtutil.exe"), patch(
-        "tp_agent.subprocess.run", return_value=_fake_result(0, stdout="")
+    with (
+        patch("tp_agent.shutil.which", return_value="wevtutil.exe"),
+        patch("tp_agent.subprocess.run", return_value=_fake_result(0, stdout="")),
     ):
         events, status, reason = tp_agent._query_windows_channel(
             "PowerShell Operational", None, 200, log_fn=warnings.append
@@ -39,8 +41,9 @@ def test_no_new_events_does_not_warn():
 def test_access_denied_warns_once_per_channel_and_reports_error():
     tp_agent._warned_channels.clear()
     warnings = []
-    with patch("tp_agent.shutil.which", return_value="wevtutil.exe"), patch(
-        "tp_agent.subprocess.run", return_value=_fake_result(1, stderr="Access is denied.")
+    with (
+        patch("tp_agent.shutil.which", return_value="wevtutil.exe"),
+        patch("tp_agent.subprocess.run", return_value=_fake_result(1, stderr="Access is denied.")),
     ):
         events1, status1, reason1 = tp_agent._query_windows_channel("Security", None, 200, log_fn=warnings.append)
         events2, status2, reason2 = tp_agent._query_windows_channel("Security", None, 200, log_fn=warnings.append)
@@ -61,6 +64,68 @@ def test_collect_source_missing_path_reports_error():
     assert reason == "No path configured for this source."
 
 
+def test_collect_source_windows_idle_cycle_keeps_bookmark():
+    # A genuinely quiet channel (no new events since last cycle) must not be
+    # mistaken for a reset -- the reset-check's own newest-id query still
+    # confirms the channel's real newest id is at/above the stale bookmark.
+    calls = []
+
+    def fake_query(_channel, after_record_id, _limit, _log_fn=print, newest_first=False):
+        calls.append(newest_first)
+        if newest_first:
+            return [{"record_id": 500}], "ok", None
+        return [], "ok", None
+
+    with patch("tp_agent._query_windows_channel", side_effect=fake_query):
+        events, bookmark, status, _reason = tp_agent._collect_source({"id": "x", "path": "Security"}, 500)
+
+    assert events == []
+    assert bookmark == 500
+    assert status == "ok"
+    assert calls == [False, True]
+
+
+def test_collect_source_windows_rebaselines_after_channel_reset():
+    # Reproduces the bug: the channel was cleared/reset, so its real newest
+    # record id is now *below* the stale on-disk bookmark -- querying
+    # EventRecordID>{stale_bookmark} matches nothing and would silently
+    # freeze this source's collection forever without the reset check.
+    logs = []
+
+    def fake_query(_channel, _after_record_id, _limit, _log_fn=print, newest_first=False):
+        if newest_first:
+            return [{"record_id": 12}], "ok", None
+        return [], "ok", None
+
+    with patch("tp_agent._query_windows_channel", side_effect=fake_query):
+        events, bookmark, status, _reason = tp_agent._collect_source(
+            {"id": "x", "path": "Security"}, 5000, log_fn=logs.append
+        )
+
+    assert events == []
+    assert bookmark == 12
+    assert status == "ok"
+    assert any("cleared or reset" in msg for msg in logs)
+
+
+def test_collect_source_windows_error_status_skips_reset_check():
+    # A real error (e.g. access denied) shouldn't spend an extra wevtutil
+    # call every cycle probing for a reset that isn't what's wrong here.
+    calls = []
+
+    def fake_query(_channel, _after_record_id, _limit, _log_fn=print, newest_first=False):
+        calls.append(newest_first)
+        return [], "error", "Access denied — run the agent as Administrator to read this channel."
+
+    with patch("tp_agent._query_windows_channel", side_effect=fake_query):
+        events, bookmark, status, _reason = tp_agent._collect_source({"id": "x", "path": "Security"}, 5000)
+
+    assert events == []
+    assert bookmark == 5000
+    assert status == "error"
+    assert calls == [False]
+
+
 def test_validate_connect_fields_rejects_missing_or_blank():
     assert tp_agent._validate_connect_fields("", "agent-1", "key-1") is None
     assert tp_agent._validate_connect_fields("http://localhost:8000", "   ", "key-1") is None
@@ -68,9 +133,7 @@ def test_validate_connect_fields_rejects_missing_or_blank():
 
 
 def test_validate_connect_fields_trims_and_normalizes():
-    result = tp_agent._validate_connect_fields(
-        "  http://localhost:8000/  ", "  agent-1  ", "  key-1  "
-    )
+    result = tp_agent._validate_connect_fields("  http://localhost:8000/  ", "  agent-1  ", "  key-1  ")
     assert result == {"url": "http://localhost:8000", "id": "agent-1", "key": "key-1"}
 
 
@@ -89,7 +152,7 @@ def test_register_with_retry_succeeds_after_transient_failures():
         patch("tp_agent.time.sleep") as mock_sleep,
     ):
         result = tp_agent._register_with_retry(
-            "http://x",
+            {"mode": "direct", "base": "http://x"},
             "agent-1",
             "key-1",
             "host",
@@ -119,7 +182,11 @@ def test_register_with_retry_fails_fast_on_401():
     ):
         try:
             tp_agent._register_with_retry(
-                "http://x", "agent-1", "key-1", "host", on_retry=lambda *a: retries.append(a)
+                {"mode": "direct", "base": "http://x"},
+                "agent-1",
+                "key-1",
+                "host",
+                on_retry=lambda *a: retries.append(a),
             )
             raise AssertionError("expected AgentCredentialsError")
         except tp_agent.AgentCredentialsError:
@@ -139,7 +206,7 @@ def test_register_with_retry_gives_up_after_bounded_window():
         patch("tp_agent.time.sleep"),
         patch("tp_agent.time.monotonic", side_effect=[0, 100, 200, 301]),
     ):
-        result = tp_agent._register_with_retry("http://x", "agent-1", "key-1", "host")
+        result = tp_agent._register_with_retry({"mode": "direct", "base": "http://x"}, "agent-1", "key-1", "host")
 
     assert result is None
 
@@ -157,17 +224,19 @@ def test_register_with_retry_stop_event_interrupts_wait():
 
     with patch("tp_agent._post", side_effect=fake_post):
         result = tp_agent._register_with_retry(
-            "http://x", "agent-1", "key-1", "host", stop_event=_ImmediateStop()
+            {"mode": "direct", "base": "http://x"}, "agent-1", "key-1", "host", stop_event=_ImmediateStop()
         )
 
     assert result is None
 
 
-def test_run_silent_gives_up_after_bounded_window():
-    # A Docker cold-start after a reboot can take well over a minute --
-    # this should retry with backoff for a real window (not a fixed small
-    # count), then return so the process exits quietly and the next login
-    # tries again, rather than raising or looping forever.
+def test_run_silent_never_gives_up_on_registration():
+    # Unlike run_gui's connect flow, a --silent instance has no user watching
+    # and no "next login" to fall back on if it's already the process running
+    # post-wake/post-reboot -- giving up here would mean nothing ever brings
+    # it back. Proves registration keeps retrying past the ~5 min window that
+    # used to end it (5 attempts here, well past the old 3-attempt give-up),
+    # rather than returning and letting the process exit quietly.
     calls = []
 
     def fake_post(_url, _key, _body):
@@ -177,12 +246,14 @@ def test_run_silent_gives_up_after_bounded_window():
     with (
         patch("tp_agent._post", side_effect=fake_post),
         patch("tp_agent._write_status"),
-        patch("tp_agent.time.sleep"),
-        patch("tp_agent.time.monotonic", side_effect=[0, 100, 200, 301]),
+        patch("tp_agent.time.sleep", side_effect=[None, None, None, None, _StopLoop()]),
     ):
-        tp_agent.run_silent("http://x", "agent-1", "key-1")
+        try:
+            tp_agent.run_silent({"url": "http://x"}, "agent-1", "key-1")
+        except _StopLoop:
+            pass  # only way this loop ever ends without a real backend to succeed against
 
-    assert len(calls) == 3
+    assert len(calls) == 5
 
 
 def test_run_silent_credentials_rejected_stops_immediately():
@@ -198,7 +269,7 @@ def test_run_silent_credentials_rejected_stops_immediately():
         patch("tp_agent._write_status", side_effect=lambda *a: written.append(a)),
         patch("tp_agent.time.sleep") as mock_sleep,
     ):
-        tp_agent.run_silent("http://x", "agent-1", "key-1")
+        tp_agent.run_silent({"url": "http://x"}, "agent-1", "key-1")
 
     assert len(calls) == 1
     mock_sleep.assert_not_called()
@@ -221,7 +292,7 @@ def test_run_silent_persists_config_and_reregisters_autostart_on_success():
         patch("tp_agent.time.sleep", side_effect=_StopLoop),
     ):
         try:
-            tp_agent.run_silent("http://x", "agent-1", "key-1")
+            tp_agent.run_silent({"url": "http://x"}, "agent-1", "key-1")
         except _StopLoop:
             pass  # escapes the heartbeat loop on purpose once we've proven we reached it
 
@@ -257,13 +328,52 @@ def test_run_silent_writes_status_on_register_failure_and_success():
         patch("tp_agent.time.sleep", side_effect=[None, _StopLoop()]),
     ):
         try:
-            tp_agent.run_silent("http://x", "agent-1", "key-1")
+            tp_agent.run_silent({"url": "http://x"}, "agent-1", "key-1")
         except _StopLoop:
             pass
 
     assert written[0] == ("Connection failed", "connection refused", "agent-1")
     assert written[1][0] == "Connected"
     assert written[1][2] == "agent-1"
+
+
+def test_run_silent_survives_unexpected_heartbeat_exception():
+    # Confirmed live: an exception from the heartbeat call *other* than
+    # AgentRequestError (a malformed response, a raw socket error urllib
+    # didn't wrap, ...) used to escape the narrow `except AgentRequestError`
+    # uncaught, silently killing this loop for good with no crash log and no
+    # relaunch (_run_with_crash_recovery only supervises the main thread) --
+    # symptom: an agent that looks "running" but never heartbeats again.
+    # Proves the broader guard now survives it and keeps looping.
+    written = []
+    heartbeat_calls = {"n": 0}
+
+    def fake_post(url, _key, _body):
+        if url.endswith("/register"):
+            return {"status": "connected", "hostname": "h", "is_primary": False}
+        heartbeat_calls["n"] += 1
+        raise KeyError("boom")  # deliberately not an AgentRequestError
+
+    with (
+        patch("tp_agent._post", side_effect=fake_post),
+        patch("tp_agent._write_status", side_effect=lambda *a: written.append(a)),
+        patch("tp_agent._ensure_local_config_persisted"),
+        patch("tp_agent._ensure_windows_autostart"),
+        patch("tp_agent._load_state", return_value={}),
+        patch("tp_agent._collect_and_ship"),
+        patch("tp_agent.time.sleep", side_effect=[None, None, _StopLoop()]),
+    ):
+        try:
+            tp_agent.run_silent({"url": "http://x"}, "agent-1", "key-1")
+        except _StopLoop:
+            pass
+
+    # Both heartbeat cycles actually ran — the first failure didn't kill the loop.
+    assert heartbeat_calls["n"] == 2
+    heartbeat_failures = [w for w in written if w[0] == "Heartbeat failed"]
+    assert len(heartbeat_failures) == 2
+    assert "Unexpected error" in heartbeat_failures[0][1]
+    assert "boom" in heartbeat_failures[0][1]
 
 
 def test_format_already_running_message_includes_status_when_present():
@@ -320,3 +430,300 @@ def test_post_url_error_has_no_status_code():
         except tp_agent.AgentRequestError as exc:
             assert exc.status_code is None
             assert "Could not reach" in str(exc)
+
+
+def test_call_with_hard_timeout_returns_value_on_success():
+    assert tp_agent._call_with_hard_timeout(lambda: 42) == 42
+
+
+def test_call_with_hard_timeout_reraises_exception_from_fn():
+    def boom():
+        raise tp_agent.AgentRequestError("nope", status_code=500)
+
+    try:
+        tp_agent._call_with_hard_timeout(boom)
+        raise AssertionError("expected AgentRequestError")
+    except tp_agent.AgentRequestError as exc:
+        assert exc.status_code == 500
+        assert str(exc) == "nope"
+
+
+def test_call_with_hard_timeout_raises_on_a_real_hang():
+    # A hung DNS lookup (the real-world case this guards against) never
+    # returns and never raises -- simulate that with a function that just
+    # blocks forever, and confirm the caller gets control back anyway
+    # rather than hanging for the real 20s, patch the threshold way down.
+    never_finish = threading.Event()
+
+    def hangs_forever():
+        never_finish.wait()  # blocks until the test's own cleanup below
+        return "should never get here"
+
+    with patch("tp_agent.NETWORK_HARD_TIMEOUT_SECONDS", 0.05):
+        try:
+            tp_agent._call_with_hard_timeout(hangs_forever)
+            raise AssertionError("expected AgentRequestError")
+        except tp_agent.AgentRequestError as exc:
+            assert "Timed out" in str(exc)
+        finally:
+            never_finish.set()  # let the leaked daemon thread finish so it doesn't linger past the test
+
+
+# ── Hub-and-spoke relay (Phase 1: manual pairing, full isolation) ──────────
+
+
+def test_validate_connect_fields_relay_mode():
+    result = tp_agent._validate_connect_fields("  192.168.1.5:47824/  ", "  child-1  ", "  key-1  ", relay=True)
+    assert result == {"relay_mode": True, "hub_relay_url": "192.168.1.5:47824", "id": "child-1", "key": "key-1"}
+
+
+def test_validate_connect_fields_relay_mode_rejects_missing():
+    assert tp_agent._validate_connect_fields("", "child-1", "key-1", relay=True) is None
+
+
+def test_conn_from_config_direct_and_relay():
+    assert tp_agent._conn_from_config({"url": "http://x:8000/"}) == {"mode": "direct", "base": "http://x:8000"}
+    assert tp_agent._conn_from_config({"relay_mode": True, "hub_relay_url": "http://192.168.1.5:47824/"}) == {
+        "mode": "relay",
+        "hub_relay_url": "http://192.168.1.5:47824",
+    }
+
+
+def test_register_direct_mode_posts_and_keeps_backend_hostname():
+    with patch(
+        "tp_agent._post", return_value={"status": "connected", "hostname": "h", "is_primary": False}
+    ) as mock_post:
+        result = tp_agent._register({"mode": "direct", "base": "http://x"}, "agent-1", "key-1", "myhost")
+    mock_post.assert_called_once_with("http://x/agents/agent-1/register", "key-1", {"hostname": "myhost"})
+    assert result["hostname"] == "h"
+
+
+def test_register_relay_mode_calls_relay_and_fills_in_hostname_locally():
+    conn = {"mode": "relay", "hub_relay_url": "http://hub:47824"}
+    with patch(
+        "tp_agent._relay_call",
+        return_value={"heartbeat": {"id": "agent-1", "status": "connected", "is_primary": False}},
+    ) as mock_relay:
+        result = tp_agent._register(conn, "agent-1", "key-1", "myhost")
+    mock_relay.assert_called_once_with(conn, "register", "agent-1", "key-1", hostname="myhost")
+    # Relay's heartbeat-shaped response never echoes hostname back -- the
+    # wrapper fills it in locally since the caller already knows its own.
+    assert result["hostname"] == "myhost"
+
+
+def test_heartbeat_relay_mode_unwraps_and_ignores_listen_addr():
+    conn = {"mode": "relay", "hub_relay_url": "http://hub:47824"}
+    with patch("tp_agent._relay_call", return_value={"heartbeat": {"status": "connected"}}) as mock_relay:
+        result = tp_agent._heartbeat(conn, "agent-1", "key-1", relay_listen_addr="192.168.1.5:47824")
+    mock_relay.assert_called_once_with(conn, "heartbeat", "agent-1", "key-1")
+    assert result == {"status": "connected"}
+
+
+def test_heartbeat_direct_mode_only_includes_listen_addr_when_set():
+    conn = {"mode": "direct", "base": "http://x"}
+    # Capability reporting is exercised separately below -- stub it here so
+    # this test isn't coupled to (or slowed down by) the real Windows checks.
+    with (
+        patch("tp_agent._post", return_value={"status": "connected"}) as mock_post,
+        patch("tp_agent._capabilities_for_heartbeat", return_value={}),
+    ):
+        tp_agent._heartbeat(conn, "agent-1", "key-1")
+    mock_post.assert_called_once_with("http://x/agents/agent-1/heartbeat", "key-1", {})
+
+    with (
+        patch("tp_agent._post", return_value={"status": "connected"}) as mock_post,
+        patch("tp_agent._capabilities_for_heartbeat", return_value={}),
+    ):
+        tp_agent._heartbeat(conn, "agent-1", "key-1", relay_listen_addr="192.168.1.5:47824")
+    mock_post.assert_called_once_with(
+        "http://x/agents/agent-1/heartbeat", "key-1", {"relay_listen_addr": "192.168.1.5:47824"}
+    )
+
+
+def test_heartbeat_direct_mode_includes_reported_capabilities():
+    conn = {"mode": "direct", "base": "http://x"}
+    with (
+        patch("tp_agent._post", return_value={"status": "connected"}) as mock_post,
+        patch(
+            "tp_agent._capabilities_for_heartbeat",
+            return_value={"event_log_reader_member": True, "sysmon_installed": False},
+        ),
+    ):
+        tp_agent._heartbeat(conn, "agent-1", "key-1")
+    mock_post.assert_called_once_with(
+        "http://x/agents/agent-1/heartbeat",
+        "key-1",
+        {"event_log_reader_member": True, "sysmon_installed": False},
+    )
+
+
+def test_heartbeat_relay_mode_never_calls_capabilities_check():
+    conn = {"mode": "relay", "hub_relay_url": "http://hub:47824"}
+    with (
+        patch("tp_agent._relay_call", return_value={"heartbeat": {"status": "connected"}}),
+        patch("tp_agent._capabilities_for_heartbeat") as mock_caps,
+    ):
+        tp_agent._heartbeat(conn, "agent-1", "key-1")
+    mock_caps.assert_not_called()
+
+
+def test_check_capabilities_empty_on_non_windows():
+    with patch("tp_agent.platform.system", return_value="Linux"):
+        assert tp_agent._check_capabilities() == {}
+
+
+def test_check_capabilities_windows_combines_both_checks():
+    with (
+        patch("tp_agent.platform.system", return_value="Windows"),
+        patch("tp_agent._is_event_log_reader_member", return_value=True),
+        patch("tp_agent._is_sysmon_installed", return_value=False),
+    ):
+        assert tp_agent._check_capabilities() == {"event_log_reader_member": True, "sysmon_installed": False}
+
+
+def test_is_event_log_reader_member_none_when_identity_unknown():
+    with patch("tp_agent._cached_windows_identity", return_value=None):
+        assert tp_agent._is_event_log_reader_member() is None
+
+
+def test_is_event_log_reader_member_true_when_username_listed():
+    fake_result = _fake_result(0, stdout="Members\n-------\nGIO\\Gio\nThe command completed.\n")
+    with (
+        patch("tp_agent._cached_windows_identity", return_value="GIO\\Gio"),
+        patch("tp_agent.subprocess.run", return_value=fake_result),
+    ):
+        assert tp_agent._is_event_log_reader_member() is True
+
+
+def test_is_event_log_reader_member_false_when_username_absent():
+    fake_result = _fake_result(0, stdout="Members\n-------\nAdministrator\n")
+    with (
+        patch("tp_agent._cached_windows_identity", return_value="GIO\\Gio"),
+        patch("tp_agent.subprocess.run", return_value=fake_result),
+    ):
+        assert tp_agent._is_event_log_reader_member() is False
+
+
+def test_is_event_log_reader_member_none_on_command_failure():
+    with (
+        patch("tp_agent._cached_windows_identity", return_value="GIO\\Gio"),
+        patch("tp_agent.subprocess.run", side_effect=OSError("net.exe not found")),
+    ):
+        assert tp_agent._is_event_log_reader_member() is None
+
+
+def test_capabilities_for_heartbeat_caches_between_calls():
+    tp_agent._capabilities_cache = {}
+    tp_agent._capabilities_last_checked = 0.0
+    with patch("tp_agent._check_capabilities", return_value={"event_log_reader_member": True}) as mock_check:
+        first = tp_agent._capabilities_for_heartbeat()
+        second = tp_agent._capabilities_for_heartbeat()
+    assert first == second == {"event_log_reader_member": True}
+    mock_check.assert_called_once()
+
+
+def test_get_sources_relay_vs_direct():
+    relay_conn = {"mode": "relay", "hub_relay_url": "http://hub"}
+    with patch("tp_agent._relay_call", return_value={"sources": [{"id": "s1"}]}) as mock_relay:
+        result = tp_agent._get_sources(relay_conn, "agent-1", "key-1")
+    assert result == [{"id": "s1"}]
+    mock_relay.assert_called_once_with(relay_conn, "sources", "agent-1", "key-1")
+
+    direct_conn = {"mode": "direct", "base": "http://x"}
+    with patch("tp_agent._get", return_value=[{"id": "s1"}]) as mock_get:
+        result = tp_agent._get_sources(direct_conn, "agent-1", "key-1")
+    assert result == [{"id": "s1"}]
+    mock_get.assert_called_once_with("http://x/agents/agent-1/sources", "key-1")
+
+
+def test_report_source_status_relay_vs_direct():
+    results = [{"source_id": "s1", "status": "ok", "reason": None}]
+    relay_conn = {"mode": "relay", "hub_relay_url": "http://hub"}
+    with patch("tp_agent._relay_call", return_value={"source_status": {"updated": 1}}) as mock_relay:
+        result = tp_agent._report_source_status(relay_conn, "agent-1", "key-1", results)
+    assert result == {"updated": 1}
+    mock_relay.assert_called_once_with(relay_conn, "source_status", "agent-1", "key-1", source_status_results=results)
+
+    direct_conn = {"mode": "direct", "base": "http://x"}
+    with patch("tp_agent._post", return_value={"updated": 1}) as mock_post:
+        tp_agent._report_source_status(direct_conn, "agent-1", "key-1", results)
+    mock_post.assert_called_once_with("http://x/agents/agent-1/sources/status", "key-1", {"results": results})
+
+
+def test_ingest_logs_relay_vs_direct():
+    batch = [{"source_id": "s1", "severity": "ok"}]
+    relay_conn = {"mode": "relay", "hub_relay_url": "http://hub"}
+    with patch("tp_agent._relay_call", return_value={"logs": {"ingested": 1, "alerts_created": 0}}) as mock_relay:
+        result = tp_agent._ingest_logs(relay_conn, "agent-1", "key-1", batch)
+    assert result == {"ingested": 1, "alerts_created": 0}
+    mock_relay.assert_called_once_with(relay_conn, "logs", "agent-1", "key-1", logs=batch)
+
+    direct_conn = {"mode": "direct", "base": "http://x"}
+    with patch("tp_agent._post", return_value={"ingested": 1, "alerts_created": 0}) as mock_post:
+        tp_agent._ingest_logs(direct_conn, "agent-1", "key-1", batch)
+    mock_post.assert_called_once_with("http://x/agents/agent-1/logs", "key-1", {"logs": batch})
+
+
+def test_relay_call_posts_to_hub_local_proxy_endpoint():
+    import json as _json
+
+    captured = {}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"heartbeat": {"status": "connected"}}'
+
+    def fake_urlopen(request, timeout=10):
+        captured["url"] = request.full_url
+        captured["body"] = request.data
+        return _FakeResponse()
+
+    with patch("tp_agent.urllib.request.urlopen", side_effect=fake_urlopen):
+        result = tp_agent._relay_call(
+            {"mode": "relay", "hub_relay_url": "http://192.168.1.5:47824"}, "heartbeat", "child-1", "key-1"
+        )
+
+    assert result == {"heartbeat": {"status": "connected"}}
+    assert captured["url"] == "http://192.168.1.5:47824/relay/proxy"
+    assert _json.loads(captured["body"]) == {"id": "child-1", "key": "key-1", "kind": "heartbeat"}
+
+
+def test_maybe_activate_hub_mode_skips_relay_conn_and_non_primary():
+    tp_agent._hub_relay_server_started.clear()
+    with patch("tp_agent.threading.Thread") as mock_thread:
+        tp_agent._maybe_activate_hub_mode({"mode": "relay", "hub_relay_url": "http://hub"}, "a1", "k1", True, print)
+        tp_agent._maybe_activate_hub_mode({"mode": "direct", "base": "http://x"}, "a1", "k1", False, print)
+    mock_thread.assert_not_called()
+    assert not tp_agent._hub_relay_server_started.is_set()
+
+
+def test_maybe_activate_hub_mode_starts_listener_once_when_direct_and_primary():
+    tp_agent._hub_relay_server_started.clear()
+    try:
+        with patch("tp_agent.threading.Thread") as mock_thread:
+            tp_agent._maybe_activate_hub_mode({"mode": "direct", "base": "http://x"}, "a1", "k1", True, print)
+            tp_agent._maybe_activate_hub_mode({"mode": "direct", "base": "http://x"}, "a1", "k1", True, print)
+        mock_thread.assert_called_once()
+        assert tp_agent._hub_relay_server_started.is_set()
+    finally:
+        tp_agent._hub_relay_server_started.clear()
+
+
+def test_current_relay_listen_addr_none_until_hub_mode_active():
+    tp_agent._hub_relay_server_started.clear()
+    assert tp_agent._current_relay_listen_addr() is None
+
+    tp_agent._hub_relay_server_started.set()
+    try:
+        with patch("tp_agent._local_lan_ip", return_value="192.168.1.5"):
+            assert tp_agent._current_relay_listen_addr() == f"192.168.1.5:{tp_agent.RELAY_LISTEN_PORT}"
+        with patch("tp_agent._local_lan_ip", return_value=None):
+            assert tp_agent._current_relay_listen_addr() is None
+    finally:
+        tp_agent._hub_relay_server_started.clear()

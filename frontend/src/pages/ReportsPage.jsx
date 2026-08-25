@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import {
   createSchedule,
   deleteSchedule,
   exportReportCsv,
-  exportReportPdf,
   generateReport,
   listReports,
   listSchedules,
@@ -23,6 +22,8 @@ import Modal from "../components/common/Modal";
 import { useDelayedHover } from "../hooks/useDelayedHover";
 import { formatTimestamp } from "../utils/format";
 import ReportViewModal from "../components/screens/ReportViewModal";
+import ReportPdfModal from "../components/screens/ReportPdfModal";
+import { PillSelector } from "../components/common/PillSelector";
 
 const TABS = [
   { id: "report", label: "Report" },
@@ -72,6 +73,25 @@ function shiftDate(dateStr, days) {
   const d = new Date(dateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+// Same flash-on-change pattern as KpiCard.jsx, colocated here rather than
+// extracted to hooks/ since this page is the only other caller.
+function useFlashOnChange(value) {
+  const prevValue = useRef(value);
+  const [flash, setFlash] = useState(false);
+
+  useEffect(() => {
+    if (prevValue.current !== value) {
+      prevValue.current = value;
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 900);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [value]);
+
+  return flash;
 }
 
 // ── Report status strip — replaces the old page-wide "Reports this month /
@@ -128,10 +148,11 @@ function ReportStatusStrip({ report, agents, schedule, onJumpToday, onOpenAgents
 
 function StatusTile({ tile: t }) {
   const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  const flash = useFlashOnChange(t.value);
   const clickable = !!t.onClick;
   return (
     <div
-      className={["tp-card", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      className={["tp-card", hovered && "tp-hover-glow", flash && "tp-kpi-flash"].filter(Boolean).join(" ")}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onClick={t.onClick}
@@ -218,6 +239,33 @@ function AgentsModal({ open, onClose, agents }) {
 const CMP_TH = { padding: "11px 16px", fontSize: 11 };
 const CMP_TD = { padding: "12px 16px", fontSize: 14 };
 
+function ComparisonRow({ k, showComparison }) {
+  const flash = useFlashOnChange(k.value);
+  return (
+    <tr>
+      <td style={CMP_TD}>{k.label}</td>
+      <td
+        className={flash ? "tp-kpi-flash" : ""}
+        style={{ ...CMP_TD, textAlign: "right", fontFamily: theme.font.mono, fontWeight: 600 }}
+      >
+        {k.value}
+      </td>
+      {showComparison && (
+        <td style={{ ...CMP_TD, textAlign: "right", fontFamily: theme.font.mono, color: theme.color.textMuted }}>
+          {k.previous_value ?? "—"}
+        </td>
+      )}
+      {showComparison && (
+        <td style={{ ...CMP_TD, textAlign: "right", fontFamily: theme.font.mono, fontWeight: 600 }}>
+          <span style={{ color: trendColor(k.trend_good) }}>
+            {k.delta_pct != null ? `${TREND_ARROW[k.trend]} ${Math.abs(k.delta_pct)}%` : "—"}
+          </span>
+        </td>
+      )}
+    </tr>
+  );
+}
+
 function ComparisonTable({ kpis, compareTo }) {
   const showComparison = compareTo !== "none";
   return (
@@ -234,26 +282,7 @@ function ComparisonTable({ kpis, compareTo }) {
           </thead>
           <tbody>
             {kpis.map((k) => (
-              <tr key={k.label}>
-                <td style={CMP_TD}>{k.label}</td>
-                <td style={{ ...CMP_TD, textAlign: "right", fontFamily: theme.font.mono, fontWeight: 600 }}>
-                  {k.value}
-                </td>
-                {showComparison && (
-                  <td
-                    style={{ ...CMP_TD, textAlign: "right", fontFamily: theme.font.mono, color: theme.color.textMuted }}
-                  >
-                    {k.previous_value ?? "—"}
-                  </td>
-                )}
-                {showComparison && (
-                  <td style={{ ...CMP_TD, textAlign: "right", fontFamily: theme.font.mono, fontWeight: 600 }}>
-                    <span style={{ color: trendColor(k.trend_good) }}>
-                      {k.delta_pct != null ? `${TREND_ARROW[k.trend]} ${Math.abs(k.delta_pct)}%` : "—"}
-                    </span>
-                  </td>
-                )}
-              </tr>
+              <ComparisonRow key={k.label} k={k} showComparison={showComparison} />
             ))}
           </tbody>
         </table>
@@ -402,31 +431,11 @@ function ReportTab({ reportType, onReportTypeChange, onGenerated, onOpenSchedule
       >
         <div style={{ display: "flex", alignItems: "flex-end", gap: theme.space[3], flexWrap: "wrap" }}>
           <FieldLabel label="Type">
-            <div style={{ display: "flex", gap: 6 }}>
-              {REPORT_TYPE_OPTIONS.map((opt) => (
-                <span
-                  key={opt.key}
-                  onClick={() => onReportTypeChange(opt.key)}
-                  role="button"
-                  tabIndex={0}
-                  className={reportType === opt.key ? "tp-glass tp-glass-text" : ""}
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    padding: "7px 14px",
-                    borderRadius: 999,
-                    cursor: "pointer",
-                    color: reportType === opt.key ? theme.color.text : theme.color.textMuted,
-                    // Only set inline when inactive — .tp-glass supplies its
-                    // own border for the active pill, and an inline border
-                    // would otherwise win over the class and hide it.
-                    ...(reportType !== opt.key && { border: `1px solid ${theme.color.border}` }),
-                  }}
-                >
-                  {opt.label}
-                </span>
-              ))}
-            </div>
+            <PillSelector
+              options={REPORT_TYPE_OPTIONS.map((opt) => ({ id: opt.key, label: opt.label }))}
+              activeId={reportType}
+              onSelect={onReportTypeChange}
+            />
           </FieldLabel>
           <FieldLabel label="Period">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -466,8 +475,32 @@ function ReportTab({ reportType, onReportTypeChange, onGenerated, onOpenSchedule
         </Button>
       </div>
 
+      {loading && !d && (
+        <div
+          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: theme.space[3] }}
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="tp-card" style={{ padding: "15px 18px" }}>
+              <div className="tp-intel-skeleton" style={{ height: 10, width: "50%", marginBottom: 10 }} />
+              <div className="tp-intel-skeleton" style={{ height: 15, width: "70%", marginBottom: 6 }} />
+              <div className="tp-intel-skeleton" style={{ height: 10, width: "40%" }} />
+            </div>
+          ))}
+        </div>
+      )}
+
       {d && (
-        <>
+        <div
+          key={`${reportType}-${refDate}`}
+          className="tp-mini-pane-enter"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: theme.space[4],
+            opacity: loading ? 0.5 : 1,
+            transition: "opacity 150ms ease",
+          }}
+        >
           <ReportStatusStrip
             report={report}
             agents={d.agents}
@@ -478,7 +511,7 @@ function ReportTab({ reportType, onReportTypeChange, onGenerated, onOpenSchedule
           />
           <ComparisonTable kpis={d.kpis} compareTo={compareTo} />
           <AgentsModal open={agentsOpen} onClose={() => setAgentsOpen(false)} agents={d.agents} />
-        </>
+        </div>
       )}
     </div>
   );
@@ -500,14 +533,15 @@ function statusPillStyle(status) {
   return { background: "rgba(139, 148, 158, 0.16)", color: theme.color.textMuted };
 }
 
-function ComplianceRow({ row, generatedAt }) {
+function ComplianceRow({ row, generatedAt, delayMs = 0 }) {
   const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
   return (
     <div
-      className={["tp-card", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      className={["tp-card", "tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{
+        animationDelay: `${delayMs}ms`,
         padding: theme.space[4],
         display: "flex",
         justifyContent: "space-between",
@@ -573,18 +607,60 @@ function ComplianceTab({ onGenerated }) {
   }, []);
 
   const rows = report?.data?.framework_rows ?? [];
+  const passCount = rows.filter((r) => r.status === "pass").length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: theme.space[4] }}>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div
+        className="tp-card"
+        style={{
+          padding: theme.space[4],
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: theme.space[3],
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 600, color: theme.color.text }}>
+          {rows.length > 0
+            ? `Compliance evidence — ${passCount}/${rows.length} controls passing`
+            : "Compliance evidence"}
+        </div>
         <Button onClick={handleGenerate} disabled={loading}>
           {loading ? "Generating…" : "Regenerate"}
         </Button>
       </div>
 
-      {rows.map((row, i) => (
-        <ComplianceRow key={i} row={row} generatedAt={report?.generated_at} />
-      ))}
+      {loading && rows.length === 0 && (
+        <div
+          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: theme.space[3] }}
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="tp-card" style={{ padding: theme.space[4] }}>
+              <div className="tp-intel-skeleton" style={{ height: 14, width: "60%", marginBottom: 10 }} />
+              <div className="tp-intel-skeleton" style={{ height: 11, width: "80%", marginBottom: 8 }} />
+              <div className="tp-intel-skeleton" style={{ height: 11, width: "50%" }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+            gap: theme.space[3],
+            opacity: loading ? 0.5 : 1,
+            transition: "opacity 150ms ease",
+          }}
+        >
+          {rows.map((row, i) => (
+            <ComplianceRow key={i} row={row} generatedAt={report?.generated_at} delayMs={i * 40} />
+          ))}
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div>
@@ -616,12 +692,68 @@ function ComplianceTab({ onGenerated }) {
   );
 }
 
+// Real fields, not marketing copy -- lifted from what report_service.py's
+// _daily_data/_weekly_data/_monthly_data/_compliance_rows actually populate
+// (see backend/app/services/report_service.py), so this can't drift into
+// promising a field the backend doesn't compute.
+const BUILDER_TYPE_DESCRIPTIONS = {
+  daily:
+    "Events ingested, alerts created, critical alerts, mean time to triage, an hourly event chart, top event types, and agent coverage — all for a single day.",
+  weekly:
+    "The same event/alert/critical KPIs as Daily plus mean time to resolve, a day-by-day alert chart, and trending detection rules over a 7-day window.",
+  monthly:
+    "A written executive summary, event/alert volume trend, and incidents opened vs. resolved over a 30-day window.",
+  compliance:
+    "Four real controls checked against your org's own data: log retention, incident SLA, high-severity alert count, and enabled detection-rule coverage.",
+};
+
+function RecentBuilderReports({ refreshToken }) {
+  const [recent, setRecent] = useState([]);
+
+  useEffect(() => {
+    listReports({ limit: 5 })
+      .then((r) => setRecent(r.items))
+      .catch(() => {});
+  }, [refreshToken]);
+
+  if (recent.length === 0) {
+    return <div style={{ fontSize: 13, color: theme.color.textFaint }}>No reports generated yet.</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
+      {recent.map((r) => (
+        <div
+          key={r.id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: theme.space[2],
+            padding: theme.space[3],
+            border: `1px solid ${theme.color.border}`,
+            borderRadius: theme.radius.md,
+          }}
+        >
+          <TypeBadge type={r.type} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 13 }}>
+              {r.period_start} to {r.period_end}
+            </div>
+            <div style={{ fontSize: 11, color: theme.color.textFaint }}>{summarizeReport(r)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function BuilderTab({ onGenerated }) {
   const [type, setType] = useState("daily");
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recentToken, setRecentToken] = useState(0);
   const showToast = useToast();
 
   async function handleGenerate() {
@@ -638,6 +770,7 @@ function BuilderTab({ onGenerated }) {
       );
       showToast("Report generated — see it in the Library tab.", "success");
       onGenerated(generated);
+      setRecentToken((n) => n + 1);
     } catch {
       showToast("Could not generate that report.", "error");
     } finally {
@@ -646,13 +779,13 @@ function BuilderTab({ onGenerated }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: theme.space[4], maxWidth: 480 }}>
-      <p style={{ fontSize: 13, color: theme.color.textMuted, margin: 0, lineHeight: 1.6 }}>
-        Generate any report type against a real custom date range instead of its default rolling window — the result
-        lands in the Library tab.
-      </p>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: theme.space[5] }}>
       <Card>
         <div style={{ padding: theme.space[5], display: "flex", flexDirection: "column", gap: theme.space[4] }}>
+          <p style={{ fontSize: 13, color: theme.color.textMuted, margin: 0, lineHeight: 1.6 }}>
+            Generate any report type against a real custom date range instead of its default rolling window — the result
+            lands in the Library tab.
+          </p>
           <FieldLabel label="Report type">
             <Select value={type} onChange={(e) => setType(e.target.value)}>
               <option value="daily">Daily</option>
@@ -689,37 +822,64 @@ function BuilderTab({ onGenerated }) {
           </Button>
         </div>
       </Card>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: theme.space[4] }}>
+        <Card title="What this report includes">
+          <div style={{ padding: theme.space[4], fontSize: 13, color: theme.color.textMuted, lineHeight: 1.6 }}>
+            {BUILDER_TYPE_DESCRIPTIONS[type]}
+          </div>
+        </Card>
+        <Card title="Recently generated">
+          <div style={{ padding: theme.space[4] }}>
+            <RecentBuilderReports refreshToken={recentToken} />
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
 
+const LIBRARY_PAGE_SIZE = 10;
+
 function LibraryTab({ jumpToken }) {
   const [reports, setReports] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [viewing, setViewing] = useState(null);
+  const [pdfViewing, setPdfViewing] = useState(null);
   const showToast = useToast();
 
-  function refresh() {
+  function refresh(atPage) {
     setLoading(true);
-    listReports({ limit: 100 })
-      .then((r) => setReports(r.items))
+    listReports({ limit: LIBRARY_PAGE_SIZE, offset: atPage * LIBRARY_PAGE_SIZE })
+      .then((r) => {
+        setReports(r.items);
+        setTotal(r.total);
+      })
       .finally(() => setLoading(false));
   }
 
+  // A new report was just generated elsewhere on the page — jump back to
+  // page 0 so it's visible, same as it always was before pagination existed.
   useEffect(() => {
-    refresh();
+    setPage(0);
   }, [jumpToken]);
 
-  async function handleExport(reportId, type, format) {
+  useEffect(() => {
+    refresh(page);
+  }, [page, jumpToken]);
+
+  async function handleExportCsv(reportId, type) {
     try {
-      const blob = format === "pdf" ? await exportReportPdf(reportId) : await exportReportCsv(reportId);
-      downloadBlob(blob, `${type}_report_${reportId}.${format}`);
+      const blob = await exportReportCsv(reportId);
+      downloadBlob(blob, `${type}_report_${reportId}.csv`);
     } catch {
-      showToast(`Could not export that report as ${format.toUpperCase()}.`, "error");
+      showToast("Could not export that report as CSV.", "error");
     }
   }
 
-  if (loading) return null;
+  if (loading && reports.length === 0) return null;
 
   const columns = [
     { key: "type", label: "Type", render: (r) => <TypeBadge type={r.type} /> },
@@ -746,10 +906,10 @@ function LibraryTab({ jumpToken }) {
           <Button variant="secondary" size="sm" onClick={() => setViewing(r)}>
             View
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => handleExport(r.id, r.type, "csv")}>
+          <Button variant="secondary" size="sm" onClick={() => handleExportCsv(r.id, r.type)}>
             CSV
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => handleExport(r.id, r.type, "pdf")}>
+          <Button variant="secondary" size="sm" onClick={() => setPdfViewing(r)}>
             PDF
           </Button>
         </div>
@@ -758,7 +918,7 @@ function LibraryTab({ jumpToken }) {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: theme.space[4] }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: theme.space[4], flex: 1, minHeight: 0 }}>
       <p style={{ fontSize: 13, color: theme.color.textMuted, margin: 0 }}>
         All generated reports across every type, newest first.
       </p>
@@ -766,9 +926,18 @@ function LibraryTab({ jumpToken }) {
         columns={columns}
         rows={reports}
         rowKey={(r) => r.id}
+        page={page}
+        pageCount={Math.max(1, Math.ceil(total / LIBRARY_PAGE_SIZE))}
+        onPageChange={setPage}
         emptyMessage="No reports generated yet. Use the Custom builder tab to create one."
       />
       <ReportViewModal open={!!viewing} onClose={() => setViewing(null)} report={viewing} />
+      <ReportPdfModal
+        open={!!pdfViewing}
+        onClose={() => setPdfViewing(null)}
+        reportId={pdfViewing?.id}
+        filename={pdfViewing ? `${pdfViewing.type}_report_${pdfViewing.id}.pdf` : ""}
+      />
     </div>
   );
 }
@@ -830,8 +999,9 @@ function ScheduleModal({ open, onClose }) {
           borderRadius: theme.radius.md,
         }}
       >
-        Delivery is logged, not emailed yet — creating a schedule here stores real, working delivery configuration
-        today; actual email sending will be wired up in a future release.
+        Reports matching an active schedule are emailed automatically when generated. If this deployment hasn&apos;t
+        configured SMTP yet, delivery attempts are logged only — check with whoever manages this server&apos;s .env if
+        emails aren&apos;t arriving.
       </div>
 
       <form
@@ -923,7 +1093,7 @@ const REPORT_TITLES = {
 // Real export in all three formats, no backend change needed for JSON — the
 // full report (including `data`) is already in memory client-side once
 // generated, so a client-only Blob download is genuinely real, not a stub.
-function ExportMenu({ report }) {
+function ExportMenu({ report, onViewPdf }) {
   const [open, setOpen] = useState(false);
   const showToast = useToast();
 
@@ -942,13 +1112,17 @@ function ExportMenu({ report }) {
       showToast("Generate a report first.", "error");
       return;
     }
+    if (format === "pdf") {
+      onViewPdf();
+      return;
+    }
     try {
       if (format === "json") {
         const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
         downloadBlob(blob, `${report.type}_report_${report.id}.json`);
         return;
       }
-      const blob = format === "pdf" ? await exportReportPdf(report.id) : await exportReportCsv(report.id);
+      const blob = await exportReportCsv(report.id);
       downloadBlob(blob, `${report.type}_report_${report.id}.${format}`);
     } catch {
       showToast(`Could not export that report as ${format.toUpperCase()}.`, "error");
@@ -1009,6 +1183,7 @@ export default function ReportsPage() {
   const [libraryJump, setLibraryJump] = useState(0);
   const [lastReport, setLastReport] = useState(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [pdfModalReport, setPdfModalReport] = useState(null);
   const { org, user } = useAuth();
 
   function handleGenerated(report) {
@@ -1073,7 +1248,7 @@ export default function ReportsPage() {
               <Button variant="secondary" onClick={() => setScheduleOpen(true)}>
                 Schedule delivery
               </Button>
-              <ExportMenu report={showSubtitle ? lastReport : null} />
+              <ExportMenu report={showSubtitle ? lastReport : null} onViewPdf={() => setPdfModalReport(lastReport)} />
             </div>
           </div>
 
@@ -1083,50 +1258,71 @@ export default function ReportsPage() {
               padding: "20px 28px 24px",
               flex: 1,
               minHeight: 0,
-              overflowY: "auto",
+              // A real flex column (not just a scrolling block div) so a
+              // height:0-resistant child (the Library case below) can be
+              // bounded by flexbox's own algorithm instead of a height:100%
+              // percentage chain, which doesn't reliably resolve through a
+              // flex-sized ancestor. Library owns its own internal scroll
+              // region (Table.jsx's sticky-header/pinned-pager area) and
+              // fills exactly what's left after the pill selector -- letting
+              // this div also scroll would mean two nested scrollbars
+              // fighting over the same overflow. Every other tab still
+              // relies on this being the scroll surface, since their content
+              // isn't laid out for an internal one.
+              display: "flex",
+              flexDirection: "column",
+              overflowY: tab === "library" ? "hidden" : "auto",
               boxSizing: "border-box",
               opacity: agentOfflineOnly ? 0.55 : 1,
               filter: agentOfflineOnly ? "grayscale(65%)" : "none",
               transition: "opacity 200ms ease-out, filter 200ms ease-out",
             }}
           >
-            <div style={{ display: "flex", gap: 6, marginBottom: theme.space[5], flexWrap: "wrap" }}>
-              {TABS.map((t) => (
-                <span
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  role="button"
-                  tabIndex={0}
-                  className={tab === t.id ? "tp-glass tp-glass-text" : ""}
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    padding: "7px 16px",
-                    borderRadius: 999,
-                    cursor: "pointer",
-                    color: tab === t.id ? theme.color.text : theme.color.textMuted,
-                    ...(tab !== t.id && { border: `1px solid ${theme.color.border}` }),
-                  }}
-                >
-                  {t.label}
-                </span>
-              ))}
+            <div style={{ marginBottom: theme.space[5], flexShrink: 0 }}>
+              <PillSelector
+                options={TABS.map((t) => ({ id: t.id, label: t.label }))}
+                activeId={tab}
+                onSelect={setTab}
+              />
             </div>
 
-            {tab === "report" && (
-              <ReportTab
-                reportType={reportType}
-                onReportTypeChange={setReportType}
-                onGenerated={handleGenerated}
-                onOpenSchedule={() => setScheduleOpen(true)}
-              />
-            )}
-            {tab === "compliance" && <ComplianceTab onGenerated={handleGenerated} />}
-            {tab === "builder" && <BuilderTab onGenerated={handleGenerated} />}
-            {tab === "library" && <LibraryTab jumpToken={libraryJump} />}
+            <div
+              key={tab}
+              className="tp-mini-pane-enter"
+              style={
+                // Library gets a real bounded flex item (flex:1, minHeight:0)
+                // so it's capped to whatever space remains below the pill
+                // selector, handing any overflow to Table.jsx's own internal
+                // region. The other tabs get flex:1 with no minHeight cap --
+                // they size to their natural content and overflow up to the
+                // tab-body's own overflowY: auto, same as before this chain
+                // became a real flex column.
+                tab === "library"
+                  ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }
+                  : { flex: "0 0 auto" }
+              }
+            >
+              {tab === "report" && (
+                <ReportTab
+                  reportType={reportType}
+                  onReportTypeChange={setReportType}
+                  onGenerated={handleGenerated}
+                  onOpenSchedule={() => setScheduleOpen(true)}
+                />
+              )}
+              {tab === "compliance" && <ComplianceTab onGenerated={handleGenerated} />}
+              {tab === "builder" && <BuilderTab onGenerated={handleGenerated} />}
+              {tab === "library" && <LibraryTab jumpToken={libraryJump} />}
+            </div>
           </div>
 
           <ScheduleModal open={scheduleOpen} onClose={() => setScheduleOpen(false)} />
+          <ReportPdfModal
+            open={!!pdfModalReport}
+            onClose={() => setPdfModalReport(null)}
+            reportId={pdfModalReport?.id}
+            filename={pdfModalReport ? `${pdfModalReport.type}_report_${pdfModalReport.id}.pdf` : ""}
+          />
         </div>
       )}
     </SetupLockOverlay>

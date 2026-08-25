@@ -99,15 +99,17 @@ export default function NetworkTab() {
         network, without exposing anything to your LAN or the public internet.
       </div>
 
-      <Card title="Current connection" style={{ marginBottom: theme.space[6] }}>
+      <Card title="Current connection" className="tp-intel-card-in" style={{ marginBottom: theme.space[6] }}>
         <div style={{ padding: theme.space[5] }}>
           <div style={{ display: "flex", alignItems: "center", gap: theme.space[3], marginBottom: theme.space[2] }}>
             <span
+              className={onTailnet ? "tp-pulse-dot" : ""}
               style={{
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
                 background: onTailnet ? theme.color.safe.text : theme.color.textFaint,
+                "--tp-pulse-color": theme.color.safe.text,
               }}
             />
             <span style={{ fontSize: 14 }}>
@@ -125,12 +127,14 @@ export default function NetworkTab() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: theme.space[3] }}>
             <span
+              className={apiOk ? "tp-pulse-dot" : ""}
               style={{
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
                 background:
                   apiOk === null ? theme.color.textFaint : apiOk ? theme.color.safe.text : theme.color.danger.text,
+                "--tp-pulse-color": theme.color.safe.text,
               }}
             />
             <span style={{ fontSize: 14 }}>
@@ -149,7 +153,11 @@ export default function NetworkTab() {
         </div>
       </Card>
 
-      <Card title="Set up Tailscale access" style={{ marginBottom: theme.space[6] }}>
+      <Card
+        title="Set up Tailscale access"
+        className="tp-intel-card-in"
+        style={{ marginBottom: theme.space[6], animationDelay: "40ms" }}
+      >
         <div style={{ padding: theme.space[5] }}>
           <Step n={1} title="Install Tailscale on the machine running this app's Docker containers">
             Free, from{" "}
@@ -204,7 +212,7 @@ CREDENTIAL_ENCRYPTION_KEY=<see the comment above it in env.example>`}
         </div>
       </Card>
 
-      <Card title="Inviting other people">
+      <Card title="Inviting other people" className="tp-intel-card-in" style={{ animationDelay: "80ms" }}>
         <div style={{ padding: theme.space[5], fontSize: 13, color: theme.color.textMuted, lineHeight: 1.6 }}>
           Only devices on your tailnet can reach this deployment at all — Tailscale itself is the access gate, and the
           app login is still required on top of that. To let someone else in (family, a teammate), invite them from the{" "}

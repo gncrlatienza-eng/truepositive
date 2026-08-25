@@ -13,6 +13,7 @@ import AlertDetailModal from "../components/alerts/AlertDetailModal";
 import { formatTimestamp } from "../utils/format";
 import { useToast } from "../components/common/Toast";
 import { useAuth } from "../context/AuthContext";
+import { useScope } from "../context/ScopeContext";
 import { getEventGuide } from "../data/eventGuides";
 
 const PAGE_SIZE = 20;
@@ -29,6 +30,8 @@ const NEXT_LABEL = { open: "Ack", ack: "Escalate", escalated: "Resolve" };
 export default function AlertsPage() {
   const showToast = useToast();
   const { user } = useAuth();
+  const { scope } = useScope();
+  const scopedAgentId = scope.mode === "agent" ? scope.agentId : undefined;
   const [rules, setRules] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -62,6 +65,7 @@ export default function AlertsPage() {
       if (severity) params.severity = severity;
       if (ruleId) params.rule_id = ruleId;
       if (mineOnly && user) params.assignee_id = user.id;
+      if (scopedAgentId) params.agent_id = scopedAgentId;
       return listAlerts(params)
         .then((data) => {
           setAlerts(data.items);
@@ -71,7 +75,7 @@ export default function AlertsPage() {
           if (!silent) setLoading(false);
         });
     },
-    [q, status, severity, ruleId, mineOnly, user, page],
+    [q, status, severity, ruleId, mineOnly, user, page, scopedAgentId],
   );
 
   useEffect(() => {
@@ -79,6 +83,10 @@ export default function AlertsPage() {
       .then(setRules)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setPage(0);
+  }, [scopedAgentId]);
 
   useEffect(() => {
     refresh().catch(() => showToast("Could not load alerts.", "error"));
@@ -127,6 +135,11 @@ export default function AlertsPage() {
     });
   }
 
+  function handleFilterByRule(newRuleId) {
+    setRuleId(newRuleId);
+    setPage(0);
+  }
+
   async function handleExport() {
     try {
       const params = {};
@@ -135,6 +148,7 @@ export default function AlertsPage() {
       if (severity) params.severity = severity;
       if (ruleId) params.rule_id = ruleId;
       if (mineOnly && user) params.assignee_id = user.id;
+      if (scopedAgentId) params.agent_id = scopedAgentId;
       await exportAlertsCsv(params);
     } catch {
       showToast("Could not export alerts.", "error");
@@ -416,7 +430,9 @@ export default function AlertsPage() {
             alert={selected}
             ruleName={selected?.rule_id ? ruleNameById[selected.rule_id] : null}
             eventType={selected?.rule_id ? ruleById[selected.rule_id]?.conditions?.event_type : null}
+            mitreTechnique={selected?.rule_id ? ruleById[selected.rule_id]?.mitre_technique : null}
             onUpdate={(payload) => selected && applyUpdate(selected.id, payload)}
+            onFilterByRule={handleFilterByRule}
           />
         </div>
       )}

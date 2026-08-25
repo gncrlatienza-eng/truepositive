@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { deleteAgent, listAgents, setPrimaryAgent } from "../../api/agents";
+import { useScope } from "../../context/ScopeContext";
 import { deleteSource, listSources, updateSource } from "../../api/sources";
 import AgentCredentialsCard from "../agents/AgentCredentialsCard";
+import DeployRelayChildModal from "../agents/DeployRelayChildModal";
 import { Badge } from "../common/Badge";
 import ConfirmModal from "../common/ConfirmModal";
 import ConnectSourceModal from "./ConnectSourceModal";
 import DeployAgentModal from "./DeployAgentModal";
 import SourceDetailModal from "./SourceDetailModal";
 import { computeSourceHealth, HEALTH_COLOR_HEX } from "../../utils/sourceHealth";
+import { useDelayedHover } from "../../hooks/useDelayedHover";
 
 const AGENT_STATUS_COLOR = {
   connected: theme.color.severity.ok,
@@ -42,7 +45,159 @@ function StatusDot({ color }) {
   return <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />;
 }
 
+function RowSkeleton({ height = 58 }) {
+  return <div className="tp-intel-skeleton" style={{ height, borderRadius: theme.radius.md }} />;
+}
+
+function AgentRow({ agent: a, delayMs, onSetPrimary, onDelete }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  const expired = isEnrollmentExpired(a);
+  const showCredentials = a.status === "pending" && !expired && !!a.enrollment_key;
+  return (
+    <div
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={["tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        border: `1px solid ${theme.color.border}`,
+        borderRadius: theme.radius.md,
+        background: theme.color.surface,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: theme.space[3],
+          padding: theme.space[3],
+        }}
+      >
+        <StatusDot color={AGENT_STATUS_COLOR[a.status]} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            {a.name} {a.hostname && <span style={{ color: theme.color.textMuted }}>· {a.hostname}</span>}
+            {a.is_primary && <Badge color={theme.color.accent}>Primary</Badge>}
+            {a.is_relay_child && <Badge color={theme.color.textMuted}>Relay child</Badge>}
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: expired ? theme.color.severity.critical : theme.color.textFaint,
+            }}
+          >
+            {expired
+              ? "Enrollment expired — deploy a new agent"
+              : `${a.status} · last seen ${relativeTime(a.last_seen_at)}`}
+          </div>
+        </div>
+        {!a.is_primary && !a.is_relay_child && (
+          <OutlineButton
+            type="button"
+            style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+            onClick={() => onSetPrimary(a)}
+          >
+            Mark as primary
+          </OutlineButton>
+        )}
+        <OutlineButton
+          type="button"
+          style={{
+            width: "auto",
+            padding: "6px 12px",
+            fontSize: 13,
+            color: theme.color.severity.critical,
+          }}
+          onClick={() => onDelete(a)}
+        >
+          Delete
+        </OutlineButton>
+      </div>
+      {showCredentials && (
+        <div style={{ borderTop: `1px solid ${theme.color.border}`, padding: theme.space[4] }}>
+          <AgentCredentialsCard agent={a} enrollmentKey={a.enrollment_key} platform={a.platform} embedded />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SourceRow({ source: s, agents, delayMs, onOpenDetail, onTogglePause, onEdit, onDelete }) {
+  const { hovered, onMouseEnter, onMouseLeave } = useDelayedHover();
+  const health = computeSourceHealth(s, agents);
+  const colorKey = HEALTH_COLOR_HEX[health.color];
+  const dotColor = colorKey ? theme.color.severity[colorKey] : theme.color.textFaint;
+  return (
+    <div
+      onClick={() => onOpenDetail(s)}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      title={`${health.label} — click for details`}
+      className={["tp-intel-card-in", hovered && "tp-hover-glow"].filter(Boolean).join(" ")}
+      style={{
+        animationDelay: `${delayMs}ms`,
+        display: "flex",
+        alignItems: "center",
+        gap: theme.space[3],
+        padding: theme.space[4],
+        border: `1px solid ${theme.color.border}`,
+        borderRadius: theme.radius.md,
+        background: theme.color.surface,
+        cursor: "pointer",
+      }}
+    >
+      <StatusDot color={dotColor} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>{s.name}</div>
+        <div style={{ fontSize: 13, color: theme.color.textFaint, fontFamily: theme.font.mono }}>
+          {s.type === "local" ? s.path || "local" : `${s.protocol}://${s.host}:${s.port}`}
+        </div>
+      </div>
+      <OutlineButton
+        type="button"
+        style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onTogglePause(s);
+        }}
+      >
+        {s.status === "active" ? "Pause" : "Resume"}
+      </OutlineButton>
+      <OutlineButton
+        type="button"
+        style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit(s);
+        }}
+      >
+        Edit
+      </OutlineButton>
+      <OutlineButton
+        type="button"
+        style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(s);
+        }}
+      >
+        Delete
+      </OutlineButton>
+    </div>
+  );
+}
+
 export default function SourcesTab() {
+  // This tab keeps its own local `agents`/`sources` state (below) rather
+  // than reading agents straight off ScopeContext, since it needs richer
+  // per-agent fields (enrollment_key, enrollment_expires_at) that ScopeContext
+  // has no reason to carry. But is_primary/deleted/created here all affect
+  // what the Scope Switcher shows (it gates entirely on "does a hub exist"),
+  // so every mutation below also calls the shared refreshAgents -- without
+  // it, ScopeContext's own agent list only happens to catch up once
+  // something unrelated calls it, and the switcher stays absent right after
+  // the exact action (marking primary) that should make it appear.
+  const { refreshAgents: refreshScopeAgents } = useScope();
   const [agents, setAgents] = useState([]);
   const [sources, setSources] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +206,9 @@ export default function SourcesTab() {
   const [confirmTarget, setConfirmTarget] = useState(null); // { type: "agent" | "source", item }
   const [detailSource, setDetailSource] = useState(null); // source whose container was clicked, for the health detail modal
   const [deployOpen, setDeployOpen] = useState(false);
+  const [deployRelayOpen, setDeployRelayOpen] = useState(false);
+
+  const hub = agents.find((a) => a.is_primary) || null;
 
   async function refresh() {
     const [agentList, sourceList] = await Promise.all([listAgents(), listSources()]);
@@ -89,6 +247,7 @@ export default function SourcesTab() {
     try {
       await deleteAgent(agent.id);
       setAgents((prev) => prev.filter((a) => a.id !== agent.id));
+      refreshScopeAgents();
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(Array.isArray(detail) ? detail.map((d) => d.msg).join(" ") : detail || "Could not delete that agent.");
@@ -103,6 +262,7 @@ export default function SourcesTab() {
       // too, rather than waiting on a refetch, same immediacy as the other
       // list mutations in this file.
       setAgents((prev) => prev.map((a) => ({ ...a, is_primary: a.id === updated.id })));
+      refreshScopeAgents();
     } catch {
       setError("Could not set that agent as primary.");
     }
@@ -121,7 +281,16 @@ export default function SourcesTab() {
     });
   }
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: theme.space[6] }}>
+        <div style={{ flex: "1 1 480px", minWidth: 0, display: "flex", flexDirection: "column", gap: theme.space[2] }}>
+          <RowSkeleton />
+          <RowSkeleton />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -137,79 +306,15 @@ export default function SourcesTab() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: theme.space[2] }}>
-                {agents.map((a) => {
-                  const expired = isEnrollmentExpired(a);
-                  const showCredentials = a.status === "pending" && !expired && !!a.enrollment_key;
-                  return (
-                    <div
-                      key={a.id}
-                      style={{
-                        border: `1px solid ${theme.color.border}`,
-                        borderRadius: theme.radius.md,
-                        background: theme.color.surface,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: theme.space[3],
-                          padding: theme.space[3],
-                        }}
-                      >
-                        <StatusDot color={AGENT_STATUS_COLOR[a.status]} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                            {a.name}{" "}
-                            {a.hostname && <span style={{ color: theme.color.textMuted }}>· {a.hostname}</span>}
-                            {a.is_primary && <Badge color={theme.color.accent}>Primary</Badge>}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: expired ? theme.color.severity.critical : theme.color.textFaint,
-                            }}
-                          >
-                            {expired
-                              ? "Enrollment expired — deploy a new agent"
-                              : `${a.status} · last seen ${relativeTime(a.last_seen_at)}`}
-                          </div>
-                        </div>
-                        {!a.is_primary && (
-                          <OutlineButton
-                            type="button"
-                            style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                            onClick={() => performSetPrimary(a)}
-                          >
-                            Mark as primary
-                          </OutlineButton>
-                        )}
-                        <OutlineButton
-                          type="button"
-                          style={{
-                            width: "auto",
-                            padding: "6px 12px",
-                            fontSize: 13,
-                            color: theme.color.severity.critical,
-                          }}
-                          onClick={() => setConfirmTarget({ type: "agent", item: a })}
-                        >
-                          Delete
-                        </OutlineButton>
-                      </div>
-                      {showCredentials && (
-                        <div style={{ borderTop: `1px solid ${theme.color.border}`, padding: theme.space[4] }}>
-                          <AgentCredentialsCard
-                            agent={a}
-                            enrollmentKey={a.enrollment_key}
-                            platform={a.platform}
-                            embedded
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {agents.map((a, idx) => (
+                  <AgentRow
+                    key={a.id}
+                    agent={a}
+                    delayMs={idx * 30}
+                    onSetPrimary={performSetPrimary}
+                    onDelete={(agent) => setConfirmTarget({ type: "agent", item: agent })}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -232,66 +337,18 @@ export default function SourcesTab() {
             <div style={{ fontSize: 14, color: theme.color.textFaint }}>No sources configured yet.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: theme.space[3] }}>
-              {sources.map((s) => {
-                const health = computeSourceHealth(s, agents);
-                const colorKey = HEALTH_COLOR_HEX[health.color];
-                const dotColor = colorKey ? theme.color.severity[colorKey] : theme.color.textFaint;
-                return (
-                  <div
-                    key={s.id}
-                    onClick={() => setDetailSource(s)}
-                    title={`${health.label} — click for details`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: theme.space[3],
-                      padding: theme.space[4],
-                      border: `1px solid ${theme.color.border}`,
-                      borderRadius: theme.radius.md,
-                      background: theme.color.surface,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <StatusDot color={dotColor} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 600 }}>{s.name}</div>
-                      <div style={{ fontSize: 13, color: theme.color.textFaint, fontFamily: theme.font.mono }}>
-                        {s.type === "local" ? s.path || "local" : `${s.protocol}://${s.host}:${s.port}`}
-                      </div>
-                    </div>
-                    <OutlineButton
-                      type="button"
-                      style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        togglePause(s);
-                      }}
-                    >
-                      {s.status === "active" ? "Pause" : "Resume"}
-                    </OutlineButton>
-                    <OutlineButton
-                      type="button"
-                      style={{ width: "auto", padding: "6px 12px", fontSize: 13 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setModalSource(s);
-                      }}
-                    >
-                      Edit
-                    </OutlineButton>
-                    <OutlineButton
-                      type="button"
-                      style={{ width: "auto", padding: "6px 12px", fontSize: 13, color: theme.color.severity.critical }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmTarget({ type: "source", item: s });
-                      }}
-                    >
-                      Delete
-                    </OutlineButton>
-                  </div>
-                );
-              })}
+              {sources.map((s, idx) => (
+                <SourceRow
+                  key={s.id}
+                  source={s}
+                  agents={agents}
+                  delayMs={idx * 30}
+                  onOpenDetail={setDetailSource}
+                  onTogglePause={togglePause}
+                  onEdit={setModalSource}
+                  onDelete={(source) => setConfirmTarget({ type: "source", item: source })}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -312,6 +369,27 @@ export default function SourcesTab() {
               + Deploy an agent
             </PrimaryButton>
           </div>
+
+          {hub && (
+            <div
+              style={{
+                border: `1px solid ${theme.color.border}`,
+                borderRadius: theme.radius.lg,
+                padding: theme.space[5],
+                marginTop: theme.space[4],
+              }}
+            >
+              <h3 style={{ fontSize: 16, margin: 0, marginBottom: theme.space[2] }}>
+                Deploy a device under {hub.name}
+              </h3>
+              <p style={{ fontSize: 13, color: theme.color.textFaint, marginTop: 0, marginBottom: theme.space[4] }}>
+                Route another device&apos;s logs through {hub.name} instead of connecting it to the server directly.
+              </p>
+              <OutlineButton type="button" style={{ width: "auto" }} onClick={() => setDeployRelayOpen(true)}>
+                + Deploy a device under the hub
+              </OutlineButton>
+            </div>
+          )}
         </div>
       </div>
 
@@ -348,8 +426,26 @@ export default function SourcesTab() {
         onClose={() => {
           setDeployOpen(false);
           refresh().catch(() => setError("Could not refresh the agent list."));
+          refreshScopeAgents();
         }}
-        onAgentCreated={() => refresh().catch(() => {})}
+        onAgentCreated={() => {
+          refresh().catch(() => {});
+          refreshScopeAgents();
+        }}
+      />
+
+      <DeployRelayChildModal
+        open={deployRelayOpen}
+        hub={hub}
+        onClose={() => {
+          setDeployRelayOpen(false);
+          refresh().catch(() => setError("Could not refresh the agent list."));
+          refreshScopeAgents();
+        }}
+        onChildCreated={() => {
+          refresh().catch(() => {});
+          refreshScopeAgents();
+        }}
       />
     </div>
   );
