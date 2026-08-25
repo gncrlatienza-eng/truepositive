@@ -257,7 +257,7 @@ def get_workspace_hits(db: Session, org_id: uuid.UUID, days: int = 7) -> list[Wo
     if not matched_logs:
         return []
 
-    log_ids_by_value: dict[str, list[uuid.UUID]] = {}
+    log_ids_by_value: dict[str, list[int]] = {}
     last_seen_by_value: dict[str, datetime] = {}
     for log_id, message, timestamp in matched_logs:
         lowered = message.lower()
@@ -276,7 +276,7 @@ def get_workspace_hits(db: Session, org_id: uuid.UUID, days: int = 7) -> list[Wo
         .where(Alert.org_id == org_id, Alert.log_id.in_(all_hit_log_ids))
         .group_by(Alert.log_id)
     ).all()
-    alert_count_by_log = dict(alert_rows)
+    alert_count_by_log: dict[int, int] = {log_id: count for log_id, count in alert_rows if log_id is not None}
 
     hits: list[WorkspaceHit] = []
     for entry in _IOC_FEED:
