@@ -8,7 +8,7 @@
 #   - Frontend: bound to 127.0.0.1 only, not 0.0.0.0 — nothing is exposed to
 #     the LAN. `tailscale serve` (run separately, once, on this host — see
 #     README.md's "Deploying over Tailscale" section) is what actually
-#     forwards traffic in from the tailnet to 127.0.0.1:3000, terminating
+#     forwards traffic in from the tailnet to 127.0.0.1:3100, terminating
 #     real HTTPS with a Tailscale-issued cert along the way. There is no
 #     `caddy` service here — the already-running Tailscale daemon on the
 #     host is the reverse proxy and cert issuer, so nothing else needs to
@@ -38,10 +38,10 @@ services:
       CORS_ORIGINS: https://${TS_HOSTNAME:?Set TS_HOSTNAME in .env to your Tailscale MagicDNS name — e.g. gio.tailnet-name.ts.net (run `tailscale status` to find it)}
 
   frontend:
-    # Loopback-only: tailscale serve connects to 127.0.0.1:3000 on this host
+    # Loopback-only: tailscale serve connects to 127.0.0.1:3100 on this host
     # directly, so the container never needs to be reachable from the LAN.
     # `!override` replaces the base file's 0.0.0.0 mapping instead of
     # appending to it (Compose's default list-merge behavior is to
     # concatenate, which would otherwise leave both bindings active).
     ports: !override
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3100:3000"

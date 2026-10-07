@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -97,8 +97,8 @@ def list_logs(
     since: datetime | None = None,
     until: datetime | None = None,
     sort: SortOrder = "timestamp_desc",
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

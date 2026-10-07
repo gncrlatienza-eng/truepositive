@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.common import Severity
+from app.schemas.common import reject_explicit_nulls
 
 
 class PlaybookTrigger(BaseModel):
@@ -48,6 +49,11 @@ class PlaybookUpdate(BaseModel):
     trigger: PlaybookTrigger | None = None
     actions: PlaybookActions | None = None
     enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _no_null_required_fields(self) -> "PlaybookUpdate":
+        reject_explicit_nulls(self, "name", "trigger", "actions", "enabled")
+        return self
 
 
 class PlaybookOut(BaseModel):

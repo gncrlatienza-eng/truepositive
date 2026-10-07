@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege for the workflow token -- these jobs only need to read the repo.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend (ruff, mypy, pytest)
@@ -42,6 +46,24 @@ jobs:
       - run: ruff format --check .
       - run: mypy app
       - run: pytest
+
+  agent:
+    name: Agent (ruff, pytest)
+    # The agent is Windows-only and several tests touch Windows-only stdlib
+    # attributes (e.g. subprocess.CREATE_NO_WINDOW), so test on Windows.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Stdlib-only agent -- no requirements file needed.
+      - run: pip install pytest ruff
+      - run: ruff check --line-length 120 tp_agent.py test_tp_agent.py
+      - run: pytest -q test_tp_agent.py
 
   frontend:
     name: Frontend (eslint, prettier, build)

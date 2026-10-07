@@ -1,4 +1,5 @@
 import io
+import subprocess
 import threading
 import urllib.error
 from unittest.mock import call, patch
@@ -124,6 +125,110 @@ def test_collect_source_windows_error_status_skips_reset_check():
     assert bookmark == 5000
     assert status == "error"
     assert calls == [False]
+
+
+def _fake_event(i):
+    return {"timestamp": "2026-01-01T00:00:00Z", "severity": "info", "event_type": "Test", "message": f"event {i}"}
+
+
+def test_collect_and_ship_chunks_combined_batch_over_backend_cap():
+    # 3 sources x 200 events = 600, over the backend's 500-item cap -- must
+    # be split into multiple _ingest_logs calls, none exceeding the cap, and
+    # every source's bookmark should still advance once its chunk ships.
+    sources = [{"id": f"src-{i}", "path": f"Channel{i}"} for i in range(3)]
+    per_source_events = {s["id"]: [_fake_event(i) for i in range(200)] for s in sources}
+
+    def fake_collect_source(source, _bookmark, _log_fn=print):
+        return per_source_events[source["id"]], f"bookmark-{source['id']}", "ok", None
+
+    ingest_calls = []
+
+    def fake_ingest_logs(_conn, _agent_id, _agent_key, batch):
+        ingest_calls.append(batch)
+        return {"ingested": len(batch), "alerts_created": 0}
+
+    state = {}
+    with (
+        patch("tp_agent._get_sources", return_value=sources),
+        patch("tp_agent._collect_source", side_effect=fake_collect_source),
+        patch("tp_agent._maybe_auto_fix_source"),
+        patch("tp_agent._report_source_status"),
+        patch("tp_agent._ingest_logs", side_effect=fake_ingest_logs),
+        patch("tp_agent._save_state"),
+        patch("tp_agent._write_status") as write_status,
+    ):
+        tp_agent._collect_and_ship({}, "agent-1", "key-1", state)
+
+    assert len(ingest_calls) == 2
+    assert all(len(batch) <= tp_agent.MAX_INGEST_BATCH_SIZE for batch in ingest_calls)
+    assert sum(len(batch) for batch in ingest_calls) == 600
+    assert state["bookmarks"] == {s["id"]: f"bookmark-{s['id']}" for s in sources}
+    write_status.assert_not_called()
+
+
+def test_collect_and_ship_failed_chunk_does_not_block_others():
+    # One source's chunk fails (e.g. still over-quota after an offline gap);
+    # a different source's already-succeeded chunk must still advance and
+    # persist instead of the whole cycle being wedged.
+    sources = [{"id": "good", "path": "A"}, {"id": "bad", "path": "B"}]
+    per_source_events = {
+        "good": [_fake_event(i) for i in range(200)],
+        "bad": [_fake_event(i) for i in range(400)],  # forces its own chunk
+    }
+
+    def fake_collect_source(source, _bookmark, _log_fn=print):
+        return per_source_events[source["id"]], f"bookmark-{source['id']}", "ok", None
+
+    def fake_ingest_logs(_conn, _agent_id, _agent_key, batch):
+        if len(batch) == 400:
+            raise tp_agent.AgentRequestError("422 Unprocessable Entity")
+        return {"ingested": len(batch), "alerts_created": 0}
+
+    state = {}
+    with (
+        patch("tp_agent._get_sources", return_value=sources),
+        patch("tp_agent._collect_source", side_effect=fake_collect_source),
+        patch("tp_agent._maybe_auto_fix_source"),
+        patch("tp_agent._report_source_status"),
+        patch("tp_agent._ingest_logs", side_effect=fake_ingest_logs),
+        patch("tp_agent._save_state"),
+        patch("tp_agent._write_status") as write_status,
+    ):
+        tp_agent._collect_and_ship({}, "agent-1", "key-1", state)
+
+    assert state["bookmarks"] == {"good": "bookmark-good"}
+    write_status.assert_called_once()
+    assert write_status.call_args.args[0] == "Collection failed"
+    assert write_status.call_args.args[2] == "agent-1"
+
+
+def test_collect_and_ship_zero_event_source_bookmark_persists_despite_other_failure():
+    # A source with nothing new this cycle (e.g. a cheap rebaseline check)
+    # isn't shipped at all, so its bookmark shouldn't be held hostage by a
+    # different source's shipping failure.
+    sources = [{"id": "quiet", "path": "A"}, {"id": "bad", "path": "B"}]
+
+    def fake_collect_source(source, _bookmark, _log_fn=print):
+        if source["id"] == "quiet":
+            return [], "bookmark-quiet", "ok", None
+        return [_fake_event(0)], "bookmark-bad", "ok", None
+
+    def fake_ingest_logs(_conn, _agent_id, _agent_key, _batch):
+        raise tp_agent.AgentRequestError("connection refused")
+
+    state = {}
+    with (
+        patch("tp_agent._get_sources", return_value=sources),
+        patch("tp_agent._collect_source", side_effect=fake_collect_source),
+        patch("tp_agent._maybe_auto_fix_source"),
+        patch("tp_agent._report_source_status"),
+        patch("tp_agent._ingest_logs", side_effect=fake_ingest_logs),
+        patch("tp_agent._save_state"),
+        patch("tp_agent._write_status"),
+    ):
+        tp_agent._collect_and_ship({}, "agent-1", "key-1", state)
+
+    assert state["bookmarks"] == {"quiet": "bookmark-quiet"}
 
 
 def test_validate_connect_fields_rejects_missing_or_blank():
@@ -727,3 +832,63 @@ def test_current_relay_listen_addr_none_until_hub_mode_active():
             assert tp_agent._current_relay_listen_addr() is None
     finally:
         tp_agent._hub_relay_server_started.clear()
+
+
+# ── Elevated actions (2026-10-04 audit: no elevated code from user-writable paths) ──
+
+
+def test_ps_quote_escapes_embedded_apostrophes():
+    assert tp_agent._ps_quote("C:/Users/O'Brien") == "'C:/Users/O''Brien'"
+
+
+def test_read_elevated_result_ignores_stale_and_mismatched_results(tmp_path):
+    with patch("tp_agent.ELEVATED_RESULTS_DIR", tmp_path):
+        assert tp_agent._read_elevated_result("install_sysmon", 100) is None  # no file yet
+
+        # Written with a BOM, the way PowerShell 5.1's Set-Content -Encoding UTF8 does.
+        (tmp_path / "install_sysmon.json").write_text(
+            '{"action": "install_sysmon", "success": true, "message": "ok", "finished_at": 50}', encoding="utf-8-sig"
+        )
+        assert tp_agent._read_elevated_result("install_sysmon", 100) is None  # from an earlier attempt
+        assert tp_agent._read_elevated_result("install_sysmon", 40) == (True, "ok")
+        assert tp_agent._read_elevated_result("grant_log_access", 40) is None  # different action's file
+
+
+def test_elevated_fallback_command_inlines_bundled_script_and_quoted_args():
+    with patch("tp_agent._cached_windows_identity", return_value="PC\\O'Brien"):
+        command = tp_agent._elevated_fallback_command("grant_log_access")
+    assert command is not None
+    assert "net.exe localgroup 'Event Log Readers'" in command
+    assert command.endswith(" -UserName 'PC\\O''Brien'")
+
+    sysmon = tp_agent._elevated_fallback_command("install_sysmon")
+    assert sysmon is not None
+    assert "Get-AuthenticodeSignature" in sysmon
+    assert " -ConfigB64 '" in sysmon
+
+
+def test_run_elevated_fallback_reports_declined_prompt_without_writing_files(tmp_path):
+    completed = type("R", (), {"returncode": 1223, "stderr": "", "stdout": ""})()
+    with (
+        patch("tp_agent.platform.system", return_value="Windows"),
+        patch("tp_agent.ELEVATED_RESULTS_DIR", tmp_path),
+        patch("tp_agent.subprocess.run", return_value=completed) as mock_run,
+    ):
+        ok, message = tp_agent._run_elevated_fallback("grant_log_access")
+    assert not ok
+    assert "declined" in message
+    argv = mock_run.call_args.args[0]
+    assert "-File" not in argv and "-EncodedCommand" in argv[-1]
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_elevated_fallback_command_line_fits_windows_limit():
+    # CreateProcess rejects command lines over 32,767 characters; the Sysmon
+    # action (script + base64 config) is the largest.
+    completed = type("R", (), {"returncode": 0, "stderr": "", "stdout": ""})()
+    with (
+        patch("tp_agent.platform.system", return_value="Windows"),
+        patch("tp_agent.subprocess.run", return_value=completed) as mock_run,
+    ):
+        tp_agent._run_elevated_fallback("install_sysmon")
+    assert len(subprocess.list2cmdline(mock_run.call_args.args[0])) < 32_000

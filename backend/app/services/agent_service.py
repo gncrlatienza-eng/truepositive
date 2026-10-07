@@ -2,16 +2,17 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.agent import Agent, AgentStatus
 from app.models.log import Log
 from app.models.log_source import LogSource
 from app.schemas.agents import AgentCreate, AgentRegisterRequest
 from app.utils.crypto import encrypt_secret
-from app.utils.security import generate_agent_key, hash_password
+from app.utils.security import enrollment_expired, generate_agent_key, hash_password
 
 ENROLLMENT_WINDOW = timedelta(hours=24)
 # 3 missed 30s heartbeats — matches the interval agents/OnboardingStep2 use.
@@ -50,9 +51,42 @@ def _sweep_stale_batch(db: Session, agents: list[Agent]) -> None:
             agent.status = AgentStatus.DISCONNECTED
 
 
+SERVER_FULL_DETAIL = "This server is full right now. Ask the person who runs it to free up a spot."
+# Arbitrary fixed key for pg_advisory_xact_lock: serializes the capacity
+# check + insert so two simultaneous requests can't both take the last slot.
+_CAPACITY_LOCK_KEY = 7_201_001
+
+
+def agents_in_use(db: Session) -> int:
+    """Server-wide device count toward settings.max_agents. A pending agent
+    whose enrollment window lapsed never connected and never will, so it
+    doesn't hold a slot."""
+    return (
+        db.scalar(
+            select(func.count())
+            .select_from(Agent)
+            .where(or_(Agent.status != AgentStatus.PENDING, Agent.enrollment_expires_at > datetime.now(UTC)))
+        )
+        or 0
+    )
+
+
+def server_full(db: Session) -> bool:
+    return settings.max_agents is not None and agents_in_use(db) >= settings.max_agents
+
+
+def ensure_capacity(db: Session) -> None:
+    if settings.max_agents is None:
+        return
+    db.execute(select(func.pg_advisory_xact_lock(_CAPACITY_LOCK_KEY)))
+    if server_full(db):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, SERVER_FULL_DETAIL)
+
+
 def create_agent(
     db: Session, org_id: uuid.UUID, payload: AgentCreate, *, relay_parent_agent_id: uuid.UUID | None = None
 ) -> tuple[Agent, str]:
+    ensure_capacity(db)
     raw_key = generate_agent_key()
     agent = Agent(
         org_id=org_id,
@@ -125,11 +159,7 @@ def get_agent(db: Session, org_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
 
 
 def register_agent(db: Session, agent: Agent, payload: AgentRegisterRequest) -> Agent:
-    if (
-        agent.status == AgentStatus.PENDING
-        and agent.enrollment_expires_at is not None
-        and datetime.now(UTC) > agent.enrollment_expires_at
-    ):
+    if enrollment_expired(agent):
         raise HTTPException(status.HTTP_410_GONE, "Enrollment key has expired — generate new credentials")
 
     agent.status = AgentStatus.CONNECTED

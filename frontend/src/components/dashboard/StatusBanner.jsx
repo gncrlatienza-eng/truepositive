@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { theme } from "../../styles/theme";
-import { formatFullTimestamp } from "../../utils/format";
+
+function agoLabel(iso, nowMs) {
+  if (!iso) return "no data received yet";
+  const secs = Math.max(0, Math.round((nowMs - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return `last batch ${secs}s ago`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `last batch ${mins}m ago`;
+  return `last batch ${Math.round(mins / 60)}h ago`;
+}
 
 export function StatusBanner({ banner, onOpenAgents }) {
   const ok = banner.events_flowing;
@@ -16,20 +24,28 @@ export function StatusBanner({ banner, onOpenAgents }) {
           : theme.color.severity.high;
   const agentsNeedAttention = banner.agents_total > 0 && banner.agents_online < banner.agents_total;
 
-  // Brief highlight on the "updated" timestamp so a real refresh (30s
-  // auto-poll) is visible in the corner people are least likely to be
-  // staring at, not just trusted to have happened.
-  const prevUpdatedAt = useRef(banner.updated_at);
-  const [flash, setFlash] = useState(false);
+  // The dot and the rate text pulse once when a new batch actually reaches
+  // the server (about every 30s per agent) -- not on every 2s dashboard
+  // poll, and not on a decorative infinite loop, so the motion means
+  // something.
+  const prevReceivedAt = useRef(banner.last_received_at);
+  const [beat, setBeat] = useState(false);
   useEffect(() => {
-    if (prevUpdatedAt.current !== banner.updated_at) {
-      prevUpdatedAt.current = banner.updated_at;
-      setFlash(true);
-      const t = setTimeout(() => setFlash(false), 700);
+    if (prevReceivedAt.current !== banner.last_received_at) {
+      prevReceivedAt.current = banner.last_received_at;
+      setBeat(true);
+      const t = setTimeout(() => setBeat(false), 1200);
       return () => clearTimeout(t);
     }
     return undefined;
-  }, [banner.updated_at]);
+  }, [banner.last_received_at]);
+
+  // "last batch Ns ago" ticks between polls without refetching.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
   return (
     <div
       style={{
@@ -45,7 +61,7 @@ export function StatusBanner({ banner, onOpenAgents }) {
     >
       <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 600, color }}>
         <span
-          className={ok ? "tp-pulse-dot" : ""}
+          className={beat ? "tp-pulse-once" : ""}
           style={{
             width: 8,
             height: 8,
@@ -91,11 +107,11 @@ export function StatusBanner({ banner, onOpenAgents }) {
       </span>
       <span style={{ flex: 1 }} />
       <span
-        className={flash ? "tp-kpi-flash" : ""}
+        className={beat ? "tp-kpi-flash" : ""}
+        title="Average over the last 5 minutes, counted when logs reach the server"
         style={{ fontSize: 14, color: theme.color.textMuted, borderRadius: 4, padding: "2px 4px" }}
       >
-        {banner.events_per_min.toFixed(0)} events/min · updated{" "}
-        <span style={{ fontFamily: theme.font.mono }}>{formatFullTimestamp(banner.updated_at)}</span>
+        {banner.events_per_min.toFixed(0)} events/min · {agoLabel(banner.last_received_at, nowMs)}
       </span>
     </div>
   );

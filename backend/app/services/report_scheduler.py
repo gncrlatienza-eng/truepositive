@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
 from sqlalchemy import select
@@ -43,7 +43,10 @@ def run_scheduled_reports(report_type: SchedulePeriod) -> None:
     its own fresh session since there's no request to hang a Depends(get_db)
     off of here.
     """
-    ref_date = datetime.now(UTC).date()
+    # The job fires just after midnight UTC, so the period that just *closed*
+    # ends yesterday -- using today would make every daily report cover only
+    # the first ~15 minutes of the new day.
+    ref_date = datetime.now(UTC).date() - timedelta(days=1)
     db = SessionLocal()
     try:
         org_ids = db.scalars(select(Org.id)).all()

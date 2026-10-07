@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -7,6 +9,7 @@ from app.config import settings
 from app.models.org import Org
 from app.models.user import User, UserRole
 from app.schemas.auth import LoginRequest, SignupRequest
+from app.services import agent_service
 from app.utils.security import create_access_token, hash_password, verify_password
 
 
@@ -16,8 +19,15 @@ def signup(db: Session, payload: SignupRequest) -> tuple[str, User, Org]:
     # has actually set SIGNUP_INVITE_CODE (public-deployment opt-in) — the
     # existing per-IP signup rate limit (5/min, see routes/auth.py) already
     # bounds brute-forcing the code itself.
-    if settings.signup_invite_required and payload.invite_code != settings.signup_invite_code:
+    if settings.signup_invite_required and not hmac.compare_digest(
+        (payload.invite_code or "").encode(), (settings.signup_invite_code or "").encode()
+    ):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid invite code")
+
+    # A new account can't add a device on a full server, so turn people away
+    # here rather than after they've set up a workspace they can't use.
+    if agent_service.server_full(db):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, agent_service.SERVER_FULL_DETAIL)
 
     if db.scalar(select(User).where(User.email == payload.email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")

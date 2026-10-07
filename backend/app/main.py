@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routes import agents, alerts, auth, dashboard, incidents, intel, logs, playbooks, reports
 from app.routes import settings as settings_route
+from app.services.log_retention import run_log_retention
 from app.services.report_scheduler import run_scheduled_reports
 
 # Root logger defaults to WARNING with no handlers, which silently drops the
@@ -23,15 +24,34 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 scheduler = BackgroundScheduler(timezone="UTC")
 
 
+# APScheduler's default misfire grace is 1s: if the process was restarting
+# or busy at 00:15, that night's run was silently dropped. An hour of grace
+# (coalesced into one run) is safe because run_scheduled_reports is
+# idempotent per (org, type, period_end).
+_JOB_DEFAULTS = {"misfire_grace_time": 3600, "coalesce": True}
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    scheduler.add_job(run_scheduled_reports, CronTrigger(hour=0, minute=15), args=["daily"], id="report_daily")
     scheduler.add_job(
-        run_scheduled_reports, CronTrigger(day_of_week="mon", hour=0, minute=15), args=["weekly"], id="report_weekly"
+        run_scheduled_reports, CronTrigger(hour=0, minute=15), args=["daily"], id="report_daily", **_JOB_DEFAULTS
     )
     scheduler.add_job(
-        run_scheduled_reports, CronTrigger(day=1, hour=0, minute=15), args=["monthly"], id="report_monthly"
+        run_scheduled_reports,
+        CronTrigger(day_of_week="mon", hour=0, minute=15),
+        args=["weekly"],
+        id="report_weekly",
+        **_JOB_DEFAULTS,
     )
+    scheduler.add_job(
+        run_scheduled_reports,
+        CronTrigger(day=1, hour=0, minute=15),
+        args=["monthly"],
+        id="report_monthly",
+        **_JOB_DEFAULTS,
+    )
+    # Minute 45 keeps it clear of the 00:15 report runs, which read logs.
+    scheduler.add_job(run_log_retention, CronTrigger(minute=45), id="log_retention", **_JOB_DEFAULTS)
     scheduler.start()
     try:
         yield

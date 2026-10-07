@@ -5,11 +5,10 @@
   licensing/attribution question from bundling a specific third-party file
   verbatim, and scoped to the handful of event types that give the best
   detection value for the least noise: process creation, network
-  connections, process-injection indicators, and file-creation activity
-  (including the FileCreateTime "timestomp" tamper indicator).
-  onmatch="exclude" on every rule group means "log everything of this type
-  except what's explicitly excluded below", a real, working default, not
-  a placeholder. Adjust/replace via Settings if you need something more
+  connections, process-injection indicators, executable/script file drops
+  (plus the FileCreateTime "timestomp" tamper indicator).
+  onmatch="exclude" means "log everything of this type except what's
+  excluded below"; onmatch="include" means "log only what's listed". Adjust/replace via Settings if you need something more
   targeted; the agent never overwrites a config file it didn't just install.
 -->
 <Sysmon schemaversion="4.91">
@@ -31,15 +30,27 @@
       <FileCreateTime onmatch="exclude" />
     </RuleGroup>
     <RuleGroup name="" groupRelation="or">
-      <ProcessTerminate onmatch="exclude" />
+      <!-- An empty include logs nothing: process exits were the single
+           largest event type (~30% of volume) with no detection value,
+           which matters on a free-tier database. -->
+      <ProcessTerminate onmatch="include" />
     </RuleGroup>
     <RuleGroup name="" groupRelation="or">
       <!-- Classic process-injection technique. -->
       <CreateRemoteThread onmatch="exclude" />
     </RuleGroup>
     <RuleGroup name="" groupRelation="or">
-      <FileCreate onmatch="exclude">
-        <TargetFilename condition="end with">.tmp</TargetFilename>
+      <!-- Only executable/script drops, not every file written (the
+           second-largest event type before this was narrowed). -->
+      <FileCreate onmatch="include">
+        <TargetFilename condition="end with">.exe</TargetFilename>
+        <TargetFilename condition="end with">.dll</TargetFilename>
+        <TargetFilename condition="end with">.ps1</TargetFilename>
+        <TargetFilename condition="end with">.bat</TargetFilename>
+        <TargetFilename condition="end with">.cmd</TargetFilename>
+        <TargetFilename condition="end with">.vbs</TargetFilename>
+        <TargetFilename condition="end with">.js</TargetFilename>
+        <TargetFilename condition="end with">.hta</TargetFilename>
       </FileCreate>
     </RuleGroup>
   </EventFiltering>

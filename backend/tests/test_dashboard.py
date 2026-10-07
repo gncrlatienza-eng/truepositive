@@ -367,3 +367,32 @@ def test_triage_panel_empty_when_no_status_transitions(client, auth_headers, db_
     data = client.get("/dashboard/panels/triage", headers=auth_headers).json()
     assert data["median_seconds"] is None
     assert data["sample_size"] == 0
+
+
+def test_events_per_min_uses_receive_time_over_five_minutes(client, auth_headers, db_session):
+    # 50 logs received just now, whose own event timestamps are old (a
+    # backlog the agent caught up on): they count toward the rate, averaged
+    # over 5 minutes, and last_received_at is set.
+    org_id = _org_id(client, auth_headers)
+    _agent, source = _seed_source_and_agent(db_session, org_id)
+    old = datetime.now(UTC) - timedelta(hours=3)
+    db_session.add_all(
+        [
+            Log(
+                org_id=org_id,
+                source_id=source.id,
+                agent_id=source.agent_id,
+                timestamp=old,
+                severity=Severity.OK,
+                event_type="x",
+                message="m",
+                raw={},
+            )
+            for _ in range(50)
+        ]
+    )
+    db_session.flush()
+
+    banner = client.get("/dashboard/summary", headers=auth_headers).json()["banner"]
+    assert banner["events_per_min"] == 10.0
+    assert banner["last_received_at"] is not None

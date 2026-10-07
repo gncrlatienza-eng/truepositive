@@ -29,6 +29,7 @@ export default [
         Blob: "readonly",
         IntersectionObserver: "readonly",
         requestAnimationFrame: "readonly",
+        cancelAnimationFrame: "readonly",
       },
     },
     settings: { react: { version: "detect" } },

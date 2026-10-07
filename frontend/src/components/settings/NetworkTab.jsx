@@ -198,7 +198,7 @@ CREDENTIAL_ENCRYPTION_KEY=<see the comment above it in env.example>`}
 
           <Step n={5} title="Expose it to your tailnet (one-time)">
             Also on that same machine:
-            <CopyRow value="tailscale serve --bg 3000" />
+            <CopyRow value="tailscale serve --bg 3100" />
             If this is the first time anyone on your tailnet has used Serve, it will print a one-time approval link —
             open it and confirm in the Tailscale admin console. After that, this step does not need repeating; it keeps
             running in the background across reboots as long as Tailscale itself is running.

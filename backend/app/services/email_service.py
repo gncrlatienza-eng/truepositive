@@ -29,15 +29,14 @@ def send_email(
         logger.info("[EMAIL] SMTP not configured — skipping send to %s: %s", to_email, subject)
         return False
 
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = settings.smtp_from_email
-    message["To"] = to_email
-    message.set_content(body)
-    if attachment is not None and attachment_filename is not None:
-        message.add_attachment(attachment, maintype="application", subtype="pdf", filename=attachment_filename)
-
     try:
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = settings.smtp_from_email
+        message["To"] = to_email
+        message.set_content(body)
+        if attachment is not None and attachment_filename is not None:
+            message.add_attachment(attachment, maintype="application", subtype="pdf", filename=attachment_filename)
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
             if settings.smtp_use_tls:
                 smtp.starttls()
@@ -45,7 +44,7 @@ def send_email(
                 smtp.login(settings.smtp_username, settings.smtp_password)
             smtp.send_message(message)
         return True
-    except (smtplib.SMTPException, OSError):
+    except (smtplib.SMTPException, OSError, ValueError):
         logger.exception("[EMAIL] Failed to send to %s: %s", to_email, subject)
         return False
 

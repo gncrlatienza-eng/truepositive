@@ -38,6 +38,29 @@ Organized by ASVS area. This list will go stale — treat it as a snapshot, not 
   2. *A relay child's key could authenticate directly against the internet-facing backend*, bypassing the hub entirely and the isolation the feature is supposed to provide. Fixed: `get_current_agent` now rejects any agent whose `relay_parent_agent_id` is set — a relay child's only legitimate path in is via its hub's authenticated relay-proxy call.
   - **Accepted residual**: the LAN hop where a relay child sends its key to its hub's local listener is still plain HTTP (no TLS) — a real, documented v1 tradeoff, not newly introduced. Fix #1 and #2 together contain its worst consequence: a key intercepted off that hop is useless anywhere except being relayed by the *actual* paired hub (fix #1 checks `child.relay_parent_agent_id == hub_agent.id`), and useless against the direct-connect endpoints outright (fix #2). Encrypting that LAN hop (e.g., a self-signed cert the hub generates at pairing time) remains unbuilt — Phase 2 scope if this needs hardening further.
 
+- **2026-10-04 full audit fixes** (details: `docs/AUDIT_2026-10-04.md`):
+  - **Agent elevation hardened.** The installer's pre-authorized `/RL HIGHEST` Scheduled Tasks previously ran the agent `.exe` from per-user `%LOCALAPPDATA%`. Any same-user process could replace it and trigger the task for silent admin rights. The tasks now run fixed scripts from admin-only `%ProgramFiles%\TruePositive\elevated`. The UAC fallback passes the script inline (`-EncodedCommand`), with no temp file. The Sysmon download, signature check and install happen in an admin-only folder. Results come back through an admin-write/user-read folder.
+  - **Rate limiting**
+    - Now covers every agent-key endpoint, including `/sources` and `/sources/status`.
+    - Limiter memory is bounded: idle keys are swept, and only real UUIDs are used as agent keys.
+    - Unknown agent ids cost the same bcrypt time as a wrong key.
+    - Behind Caddy (prod) the real client IP is used (`FORWARDED_ALLOW_IPS`) instead of the proxy's.
+  - **Expired pending enrollment keys** are rejected (410) by every agent endpoint, not just `/register`.
+  - **Input bounds**
+    - Log message and `raw` size limits.
+    - Relay list caps.
+    - Intel lookup minimum length, with LIKE wildcards escaped.
+    - Custom report range limits.
+    - Negative pagination returns 422.
+    - Explicit `null` in PATCH bodies returns 422 instead of 500.
+    - `EmailStr` for schedule recipients (blocks header injection).
+  - **Signup invite code** is compared in constant time.
+  - **Containers and proxies**
+    - The backend container runs as non-root.
+    - A `.dockerignore` keeps `.env`/venvs out of images.
+    - Caddy adds HSTS and a 20MB body cap.
+    - nginx hides its version and overwrites `X-Forwarded-For`.
+
 ### Gaps (known, not yet addressed)
 - **No password reset flow** — the "Forgot?" link on the login page is an intentional placeholder (see `docs/SPRINT_PLAN.md`); there's no backend endpoint and no sprint currently scoped to build one.
 - **No email verification** on signup.
@@ -48,8 +71,12 @@ Organized by ASVS area. This list will go stale — treat it as a snapshot, not 
 - **`audit_log` table exists but nothing writes to it** — the schema (`backend/app/models/audit_log.py`) was built in Sprint 1; no route or service populates it yet. Real audit logging is unscheduled (Settings → Audit tab is Sprint 8's "last unbuilt screen" per the sprint plan).
 - **Single static credential-encryption key** — one `CREDENTIAL_ENCRYPTION_KEY` for the whole deployment, no rotation mechanism, no KMS/per-tenant keys. Rotating it today would strand every previously-encrypted `log_sources.credential_encrypted` value (no re-encryption path exists yet).
 - **Agent enrollment keys never expire on their own, and rotation is manual-only** — `enrollment_expires_at` only gates the initial `pending → connected` transition; a connected agent's key is otherwise long-lived and only gets invalidated if a user explicitly rotates it (see Covered, above) — nothing detects or forces rotation of a suspected-compromised key automatically. Rate limiting (see Covered) narrows the blast radius of a leaked key but doesn't solve this.
-- **No rate limiting on `/agents/{id}/sources`** (log/register/heartbeat are now covered, above) — read-only, lower value target, but not yet protected.
 - **Agent binary/installer are unsigned** — no Authenticode certificate. Windows SmartScreen/AV will likely flag installs, and (partially mitigated by the new `X-SHA256` header, see Covered) there's still no way to distinguish a legitimate build from a tampered one without manually checking that hash. Needs a purchased code-signing certificate wired into the build — not something fixable in code alone.
+- **Hub relay LAN listener is unauthenticated plain HTTP** (`agent/tp_agent.py`, port 47824 on all interfaces):
+  - It has no request body cap, so a single request can make the hub allocate arbitrary memory.
+  - Relay children's keys cross the LAN in clear text.
+  - Any LAN host can consume the hub's backend rate-limit budget.
+  - The backend verifies each child's own key (see Covered), so this is an availability/LAN-sniffing risk, not a cross-org one. Fixing it needs a design decision (shared secret or TLS between hub and children).
 - **No automated dependency vulnerability scanning in CI.** Ran manually this session (`npm audit`, `pip-audit`) and found:
   - **Frontend**: `esbuild`/`vite` (dev-server-only path traversal, CVSS 7.5, Windows-specific — only reachable via `npm run dev`, not the Dockerized/production build) and `react-router-dom` (two moderate CVEs) — both fixes require a semver-major bump (Vite 5→8, react-router-dom 6→7). Not applied; needs deliberate testing, not a silent bump.
   - **Backend**: `starlette` (transitively via `fastapi==0.115.0`) has multiple known advisories fixed only in much newer `starlette`/`fastapi` versions — same story, needs a framework-version bump evaluated on its own, not a quick pin change. `pip`/`pytest`/`python-dotenv`/`ecdsa` also flagged but are either dev-tooling-only or transitively unreachable given this app's actual usage (e.g. `ecdsa` is a `python-jose` dependency only exercised for ECDSA algorithms, and this app only ever uses `HS256`).

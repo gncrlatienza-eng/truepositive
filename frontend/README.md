@@ -10,7 +10,7 @@ React + Vite web dashboard.
 
 ```bash
 npm install
-npm run dev       # http://localhost:3000
+npm run dev       # http://localhost:3100
 npm run build     # production bundle to dist/
 ```
 

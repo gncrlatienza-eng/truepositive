@@ -11,12 +11,26 @@ export function PillSelector({ options, activeId, onSelect }) {
   const containerRef = useRef(null);
   const [indicator, setIndicator] = useState(null);
 
+  // Tracks top/height too, and re-measures on resize: when the pills wrap
+  // onto a second row (narrow window), the old left-only, full-height
+  // indicator stretched across both rows into a tall blob behind one pill.
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
-    const activeEl = container.querySelector(`[data-pill-id="${activeId}"]`);
-    if (!activeEl) return;
-    setIndicator({ left: activeEl.offsetLeft, width: activeEl.offsetWidth });
+    if (!container) return undefined;
+    function measure() {
+      const activeEl = container.querySelector(`[data-pill-id="${activeId}"]`);
+      if (!activeEl) return;
+      setIndicator({
+        left: activeEl.offsetLeft,
+        top: activeEl.offsetTop,
+        width: activeEl.offsetWidth,
+        height: activeEl.offsetHeight,
+      });
+    }
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(container);
+    return () => ro.disconnect();
   }, [activeId, options]);
 
   return (
@@ -27,10 +41,10 @@ export function PillSelector({ options, activeId, onSelect }) {
           style={{
             position: "absolute",
             top: 0,
-            bottom: 0,
             left: 0,
             width: indicator.width,
-            transform: `translateX(${indicator.left}px)`,
+            height: indicator.height,
+            transform: `translate(${indicator.left}px, ${indicator.top}px)`,
             borderRadius: 999,
           }}
         />

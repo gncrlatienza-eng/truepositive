@@ -32,6 +32,13 @@ services:
       # Browser requests normally stay same-origin under DOMAIN via Caddy, so
       # this mostly matters for direct (non-proxied) API consumers.
       CORS_ORIGINS: https://${DOMAIN:?Set DOMAIN to a real domain whose DNS points at this host before deploying}
+      # Lets uvicorn take the real client IP from Caddy's X-Forwarded-For, so
+      # per-IP rate limits (login/signup) apply per client instead of every
+      # request sharing the Caddy container's IP. Safe to trust any peer here
+      # only because the backend publishes no host port in this overlay --
+      # nothing but Caddy can reach it, and Caddy overwrites (never forwards)
+      # a client-supplied X-Forwarded-For.
+      FORWARDED_ALLOW_IPS: "*"
 
   frontend:
     # No host port published — only Caddy can reach it.

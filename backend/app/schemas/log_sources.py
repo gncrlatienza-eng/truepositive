@@ -11,6 +11,7 @@ from app.models.log_source import (
     LogSourceStatus,
     LogSourceType,
 )
+from app.schemas.common import reject_explicit_nulls
 
 # SSH only this release; WinRM/Syslog and Kerberos are visible "coming soon"
 # stubs in the UI rather than silently accepted — see docs/SPRINT_PLAN.md.
@@ -71,6 +72,11 @@ class LogSourceUpdate(BaseModel):
             raise ValueError(
                 f"{self.credential_type.value} authentication isn't supported yet — use an SSH key or password"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _no_null_required_fields(self) -> "LogSourceUpdate":
+        reject_explicit_nulls(self, "name", "tags", "status")
         return self
 
 

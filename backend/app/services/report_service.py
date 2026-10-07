@@ -32,7 +32,6 @@ GeneratableType = Literal["daily", "weekly", "monthly", "compliance"]
 # introducing a separate calendar-month/ISO-week concept.
 _PERIOD_DAYS: dict[str, int] = {"daily": 1, "weekly": 7, "monthly": 30, "compliance": 30}
 
-_LOG_RETENTION_LOOKBACK_DAYS = 90
 _LOG_RETENTION_THRESHOLD = 1000
 _INCIDENT_SLA_PCT_THRESHOLD = 80
 _RULE_COVERAGE_THRESHOLD = 3
@@ -265,7 +264,7 @@ def _agent_status_list(db: Session, org_id: uuid.UUID) -> list[dict]:
 
 def _compliance_rows(db: Session, org_id: uuid.UUID, ref_date: date) -> list[dict]:
     now = datetime.now(UTC)
-    retention_start = now - timedelta(days=_LOG_RETENTION_LOOKBACK_DAYS)
+    retention_start = now - timedelta(days=settings.log_retention_days)
     log_count = db.scalar(select(func.count()).where(Log.org_id == org_id, Log.timestamp >= retention_start)) or 0
 
     incidents = db.scalars(select(Incident).where(Incident.org_id == org_id)).all()
@@ -299,7 +298,7 @@ def _compliance_rows(db: Session, org_id: uuid.UUID, ref_date: date) -> list[dic
         {
             "framework": "SOC 2 (CC7.2)",
             "control": "Log retention",
-            "metric_label": f"Logs in last {_LOG_RETENTION_LOOKBACK_DAYS}d",
+            "metric_label": f"Logs in last {settings.log_retention_days}d",
             "value": log_count,
             "threshold": f">= {_LOG_RETENTION_THRESHOLD}",
             "status": "pass" if log_count >= _LOG_RETENTION_THRESHOLD else "review",
@@ -564,6 +563,7 @@ def list_reports(
     if report_type:
         stmt = stmt.where(Report.type == report_type)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    limit, offset = min(max(limit, 1), 200), max(offset, 0)
     rows = db.scalars(stmt.order_by(Report.generated_at.desc()).limit(limit).offset(offset)).all()
     return list(rows), total
 

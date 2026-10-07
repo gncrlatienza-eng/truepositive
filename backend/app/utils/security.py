@@ -10,13 +10,18 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database.session import get_db
-from app.models.agent import Agent
+from app.models.agent import Agent, AgentStatus
 from app.models.user import User
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 _agent_key_scheme = APIKeyHeader(name="X-Agent-Key", auto_error=False)
 
 JWT_ALGORITHM = "HS256"
+
+# Verified against when an agent id doesn't exist, so an unknown id costs the
+# same bcrypt time as a wrong key -- otherwise response timing alone reveals
+# which agent ids are valid, defeating the identical-401 below.
+_DUMMY_KEY_HASH = bcrypt.hashpw(b"tp-dummy-agent-key", bcrypt.gensalt()).decode("utf-8")
 
 
 def _password_bytes(password: str) -> bytes:
@@ -62,6 +67,14 @@ def generate_agent_key() -> str:
     return f"tpa_{secrets.token_urlsafe(32)}"
 
 
+def enrollment_expired(agent: Agent) -> bool:
+    return (
+        agent.status == AgentStatus.PENDING
+        and agent.enrollment_expires_at is not None
+        and datetime.now(UTC) > agent.enrollment_expires_at
+    )
+
+
 def get_current_agent(
     agent_id: uuid.UUID,
     agent_key: str | None = Depends(_agent_key_scheme),
@@ -74,8 +87,17 @@ def get_current_agent(
         raise unauthorized
 
     agent = db.get(Agent, agent_id)
-    if agent is None or not verify_password(agent_key, agent.agent_key_hash):
+    if agent is None:
+        verify_password(agent_key, _DUMMY_KEY_HASH)
         raise unauthorized
+    if not verify_password(agent_key, agent.agent_key_hash):
+        raise unauthorized
+    if enrollment_expired(agent):
+        # Checked here, not only in register_agent: a still-pending agent's
+        # key must stop working for *every* agent endpoint once its 24h
+        # enrollment window closes -- otherwise a leaked-but-expired key could
+        # skip /register and flip the agent to connected via /heartbeat.
+        raise HTTPException(status.HTTP_410_GONE, "Enrollment key has expired — generate new credentials")
     if agent.relay_parent_agent_id is not None:
         # A relay child must never authenticate directly against the
         # internet-facing backend -- this is what actually enforces the
