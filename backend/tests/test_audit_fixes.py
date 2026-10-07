@@ -12,6 +12,7 @@ from starlette.requests import Request
 from app.models.agent import Agent
 from app.models.alert_rule import AlertRule
 from app.models.common import Severity
+from app.models.org import Org
 from app.services import report_scheduler
 from app.utils import rate_limit
 
@@ -196,6 +197,10 @@ def test_scheduled_run_reports_on_the_day_that_just_ended(db_session, monkeypatc
 
         def close(self):
             pass
+
+    # CI starts from an empty database, so don't rely on leftover dev orgs.
+    db_session.add(Org(name="Scheduler Day Org", slug=f"sched-day-{uuid.uuid4().hex[:8]}"))
+    db_session.flush()
 
     monkeypatch.setattr(report_scheduler, "SessionLocal", _Session)
     monkeypatch.setattr(report_scheduler, "_already_generated_today", lambda *a: False)
