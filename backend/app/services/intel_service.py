@@ -144,6 +144,13 @@ def search_ioc(db: Session, org_id: uuid.UUID, q: str) -> list[IocResult]:
     ]
 
 
+def _contains(value: str) -> str:
+    # ILIKE pattern for a literal substring match -- escapes the wildcard
+    # characters so a lookup for "_" or "%" doesn't match every log.
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 def find_related_alerts(db: Session, org_id: uuid.UUID, value: str) -> list[Alert]:
     """Real substring search over this org's own log messages, joined to the
     alerts those logs raised — the only honest way to answer "has this
@@ -152,7 +159,9 @@ def find_related_alerts(db: Session, org_id: uuid.UUID, value: str) -> list[Aler
     enrichment view and the "Link to incident" bulk action so both agree on
     exactly which alerts count as related to a given indicator.
     """
-    log_ids = list(db.scalars(select(Log.id).where(Log.org_id == org_id, Log.message.ilike(f"%{value}%"))))
+    log_ids = list(
+        db.scalars(select(Log.id).where(Log.org_id == org_id, Log.message.ilike(_contains(value), escape="\\")))
+    )
     if not log_ids:
         return []
     return list(
@@ -177,11 +186,13 @@ def lookup_ioc(db: Session, org_id: uuid.UUID, ioc_type: str, value: str) -> Ioc
         )
     )
 
-    matching_logs = db.scalars(
-        select(Log).where(Log.org_id == org_id, Log.message.ilike(f"%{value}%")).order_by(Log.timestamp.desc())
-    ).all()
-    first_seen = min((log.timestamp for log in matching_logs), default=None)
-    last_seen = max((log.timestamp for log in matching_logs), default=None)
+    # Aggregated in SQL -- previously every matching Log row was loaded into
+    # memory just to take a min/max/len.
+    log_count, first_seen, last_seen = db.execute(
+        select(func.count(Log.id), func.min(Log.timestamp), func.max(Log.timestamp)).where(
+            Log.org_id == org_id, Log.message.ilike(_contains(value), escape="\\")
+        )
+    ).one()
 
     alert_rows = find_related_alerts(db, org_id, value)
     related_alerts = [
@@ -211,7 +222,7 @@ def lookup_ioc(db: Session, org_id: uuid.UUID, ioc_type: str, value: str) -> Ioc
         whitelist_status=whitelist_row.kind if whitelist_row else None,  # type: ignore[arg-type]
         first_seen=first_seen,
         last_seen=last_seen,
-        log_count=len(matching_logs),
+        log_count=log_count,
         related_alerts=related_alerts[:10],
         related_incidents=related_incidents,
     )
@@ -251,7 +262,7 @@ def get_workspace_hits(db: Session, org_id: uuid.UUID, days: int = 7) -> list[Wo
         select(Log.id, Log.message, Log.timestamp).where(
             Log.org_id == org_id,
             Log.timestamp >= cutoff,
-            or_(*[Log.message.ilike(f"%{v}%") for v in values]),
+            or_(*[Log.message.ilike(_contains(v), escape="\\") for v in values]),
         )
     ).all()
     if not matched_logs:

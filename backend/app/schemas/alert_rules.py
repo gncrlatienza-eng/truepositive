@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.common import Severity
+from app.schemas.common import reject_explicit_nulls
 
 
 # Deliberately small and structured rather than accepting arbitrary JSONB —
@@ -35,6 +36,11 @@ class AlertRuleUpdate(BaseModel):
     severity: Severity | None = None
     enabled: bool | None = None
     mitre_technique: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def _no_null_required_fields(self) -> "AlertRuleUpdate":
+        reject_explicit_nulls(self, "name", "conditions", "severity", "enabled")
+        return self
 
 
 class AlertRuleOut(BaseModel):

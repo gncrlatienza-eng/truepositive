@@ -2,10 +2,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.common import Severity
 from app.models.incident import IncidentEventKind, IncidentStatus
+from app.schemas.common import reject_explicit_nulls
 
 # SLA breach thresholds (hours from created_at):
 #   open          → 72 h (configurable via incident.sla_hours column)
@@ -41,6 +42,11 @@ class IncidentUpdate(BaseModel):
     status: IncidentStatus | None = None
     # assignee_id: null clears the assignment; omit to leave it unchanged.
     assignee_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _no_null_required_fields(self) -> "IncidentUpdate":
+        reject_explicit_nulls(self, "title", "status")
+        return self
 
 
 class IncidentOut(BaseModel):

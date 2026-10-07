@@ -70,6 +70,13 @@ export function AuthProvider({ children }) {
 
   function logout() {
     clearSession();
+    // Per-user browsing history that shouldn't carry over to the next person
+    // signing in on a shared browser (IntelPage's recent IOC lookups).
+    try {
+      localStorage.removeItem("tp_intel_recent_lookups");
+    } catch {
+      // storage unavailable (private mode etc.) -- nothing to clear
+    }
   }
 
   const value = {

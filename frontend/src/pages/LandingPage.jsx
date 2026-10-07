@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ClipboardList, Radar, Siren, FileBarChart2, Compass, Clock, Inbox, Bell, Gauge, Search } from "lucide-react";
 import { theme } from "../styles/theme";
 import { PrimaryLink, OutlineLink } from "../components/auth/fields";
+import UnderWatchHero from "../components/landing/UnderWatchHero";
 
 // Rebuilt 2026-08-22 against reference/"TruePositive Redesign.dc (1).html" —
 // same layout/animations as that mockup, but with the copy corrected against
@@ -76,12 +77,6 @@ import { PrimaryLink, OutlineLink } from "../components/auth/fields";
 // showcase) instead of stretching it to fill the available space, since a
 // wide mockup with 2-column stat cards and a flat, stretched chart read as
 // sparse/empty rather than dense and real.
-
-const STATS = [
-  { value: "3 log types", label: "Windows, syslog, Sysmon" },
-  { value: "1 agent", label: "Per monitored device" },
-  { value: "Self-hosted", label: "Your data stays yours" },
-];
 
 const HOW_IT_WORKS = [
   {
@@ -246,15 +241,18 @@ function useReveal() {
     }
   };
   useEffect(() => {
+    const timers = new Set();
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry, i) => {
           if (entry.isIntersecting) {
             const el = entry.target;
-            setTimeout(() => {
+            const timer = setTimeout(() => {
+              timers.delete(timer);
               el.style.opacity = "1";
               el.style.transform = "translate(0, 0)";
             }, i * 60);
+            timers.add(timer);
             observer.unobserve(el);
           }
         });
@@ -262,7 +260,10 @@ function useReveal() {
       { threshold: 0.2 },
     );
     els.current.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      timers.forEach(clearTimeout);
+    };
   }, []);
   return register;
 }
@@ -271,10 +272,11 @@ function useParallax() {
   const ref = useRef(null);
   useEffect(() => {
     let ticking = false;
+    let frame = 0;
     function onScroll() {
       if (ticking) return;
       ticking = true;
-      requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
         if (ref.current) {
           const rect = ref.current.getBoundingClientRect();
           const vh = window.innerHeight || 800;
@@ -286,7 +288,10 @@ function useParallax() {
       });
     }
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
   }, []);
   return ref;
 }
@@ -340,6 +345,10 @@ export default function LandingPage() {
         backgroundSize: "30px 30px",
         color: theme.color.text,
         fontFamily: theme.font.body,
+        // The timeline rows start 32px off to the side before they reveal,
+        // which widened the page into a horizontal scroll on phones. "clip"
+        // (not "hidden") so the sticky header and hero keep working.
+        overflowX: "clip",
       }}
     >
       {/* HEADER */}
@@ -357,7 +366,7 @@ export default function LandingPage() {
           paddingBottom: 0,
           height: 64,
           borderBottom: `1px solid ${theme.color.border}`,
-          background: scrolled ? `${theme.color.background}dd` : "transparent",
+          background: scrolled ? `${theme.color.background}f2` : "transparent",
           backdropFilter: scrolled ? "blur(8px)" : "none",
           transition: "background 0.2s ease, backdrop-filter 0.2s ease",
         }}
@@ -382,6 +391,7 @@ export default function LandingPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <OutlineLink
             to="/onboarding"
+            className="tp-landing-header-signup"
             style={{ width: "auto", whiteSpace: "nowrap", padding: "9px 18px", fontSize: 14 }}
           >
             Create account
@@ -392,98 +402,12 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* HERO */}
-      <section
-        className="tp-landing-section"
-        style={{
-          minHeight: "calc(100vh - 64px)",
-          boxSizing: "border-box",
-          paddingTop: 48,
-          paddingBottom: 48,
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "space-between",
-          gap: 56,
-          alignItems: "center",
-        }}
-      >
-        <div style={{ flex: "1 1 420px", minWidth: 300, maxWidth: 640 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              letterSpacing: 1.5,
-              fontFamily: theme.font.mono,
-              color: theme.color.accent,
-              textTransform: "uppercase",
-              marginBottom: 18,
-            }}
-          >
-            Threat detection &amp; triage
-          </div>
-          <h1 style={{ fontSize: "clamp(32px, 4.4vw, 52px)", lineHeight: 1.12, fontWeight: 700, margin: "0 0 20px" }}>
-            Find the alert that matters, before it becomes an incident.
-          </h1>
-          <p
-            style={{
-              fontSize: 17,
-              lineHeight: 1.6,
-              color: theme.color.textMuted,
-              maxWidth: 480,
-              margin: "0 0 32px",
-            }}
-          >
-            TruePositive ingests Windows, syslog, and Sysmon events, scores every alert against your detection rules,
-            and puts only what&apos;s worth an analyst&apos;s time in front of your team.
-          </p>
-
-          <div className="tp-landing-hero-stats" style={{ display: "flex", marginBottom: 36 }}>
-            {STATS.map((stat) => (
-              <div key={stat.label}>
-                <div style={{ fontSize: 26, fontWeight: 700, color: theme.color.accent }}>{stat.value}</div>
-                <div
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    color: theme.color.textFaint,
-                    letterSpacing: 0.8,
-                    textTransform: "uppercase",
-                    marginTop: 4,
-                  }}
-                >
-                  {stat.label}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%", gap: 18 }}>
-            <PrimaryLink to="/onboarding" style={{ width: "auto", padding: "14px 28px", fontSize: 15 }}>
-              Create your workspace
-            </PrimaryLink>
-            <a
-              href="#how-it-works"
-              className="tp-link-hover-underline"
-              style={{
-                color: theme.color.textMuted,
-                opacity: 0.65,
-                fontWeight: 600,
-                fontSize: 14,
-                whiteSpace: "nowrap",
-              }}
-            >
-              See how it works
-            </a>
-          </div>
-        </div>
-
-        <div style={{ position: "relative", flex: "1 1 420px", minWidth: 340, maxWidth: 680 }}>
-          <MiniDashboard defaultTab="overview" />
-        </div>
-      </section>
+      {/* HERO — "Under Watch": world-map-to-endpoint scroll animation, see
+          components/landing/UnderWatchHero.jsx for the full rationale. */}
+      <UnderWatchHero />
 
       {/* HOW IT WORKS */}
-      <section id="how-it-works" className="tp-landing-section" style={{ paddingBottom: 110 }}>
+      <section id="how-it-works" className="tp-landing-section" style={{ paddingTop: 110, paddingBottom: 110 }}>
         {/* Narrower inner column, deliberately -- long paragraph lines are
             hard to read edge-to-edge on a wide monitor, so this column
             recenters within the now full-width section above. */}
@@ -810,7 +734,7 @@ function MiniDashboard({ defaultTab = "overview", defaultAlertId = null }) {
         borderRadius: theme.radius.lg,
         border: `1px solid ${theme.color.raised}`,
         background: `linear-gradient(135deg, ${theme.color.raised} 0%, ${theme.color.background} 100%)`,
-        boxShadow: `0 50px 110px -30px rgba(0,0,0,0.85), 0 0 90px -20px ${theme.color.accent}33`,
+        boxShadow: `0 50px 110px -30px rgba(0,0,0,0.85), 0 0 120px -40px ${theme.color.accent}26`,
         overflow: "hidden",
       }}
     >

@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.alert import AlertStatus
 from app.models.common import Severity
+from app.schemas.common import reject_explicit_nulls
 
 
 class AlertOut(BaseModel):
@@ -46,3 +47,8 @@ class AlertCreate(BaseModel):
 class AlertUpdate(BaseModel):
     status: AlertStatus | None = None
     assignee_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _no_null_required_fields(self) -> "AlertUpdate":
+        reject_explicit_nulls(self, "status")
+        return self

@@ -1,8 +1,10 @@
-FROM node:20-slim AS build
+FROM node:22-slim AS build
 
 WORKDIR /app
-COPY frontend/package.json .
-RUN npm install
+# Install from the lockfile (same as CI's `npm ci`) so the image builds the
+# exact dependency versions that were reviewed, not whatever resolves today.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 COPY frontend/ .
 # Optional override — leave unset to build with the relative "/api" default

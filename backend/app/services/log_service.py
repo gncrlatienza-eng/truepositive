@@ -80,7 +80,7 @@ def ingest_logs(db: Session, agent: Agent, payload: LogIngestRequest) -> LogInge
                         log_id=log.id,
                         severity=rule.severity,
                         status=AlertStatus.OPEN,
-                        title=f"{rule.name} — {log.event_type}",
+                        title=f"{rule.name} — {log.event_type}"[:255],
                         description=log.message,
                     )
                 )

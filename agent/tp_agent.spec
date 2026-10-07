@@ -10,7 +10,10 @@ a = Analysis(
     # brands the .exe file itself (Explorer/taskbar); this one lets the
     # running app set its own window icon via root.iconbitmap() at runtime,
     # since Tk can't reach into the exe's own embedded resource for that.
-    datas=[('icon.ico', '.'), ('sysmon_config.xml', '.')],
+    # elevated/*.ps1: the fixed admin-only actions. Read (never executed
+    # from here) by the UAC fallback, which passes their text inline via
+    # -EncodedCommand -- see _elevated_fallback_command in tp_agent.py.
+    datas=[('icon.ico', '.'), ('sysmon_config.xml', '.'), ('elevated/*.ps1', 'elevated')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

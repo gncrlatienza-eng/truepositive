@@ -15,7 +15,11 @@
 ; handled explicitly in [Code] below instead.
 
 #define MyAppName "TruePositive Agent"
-#define MyAppVersion "1.0"
+; Overridable from the command line (ISCC /DMyAppVersion=1.2.3), which the
+; agent-release GitHub workflow does from the pushed tag.
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0"
+#endif
 #define MyAppExeName "truepositive-agent.exe"
 
 [Setup]
@@ -45,6 +49,11 @@ Name: "autopermissions"; Description: "Let the agent configure Windows log permi
 
 [Files]
 Source: "dist\truepositive-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Staged here only so the elevated step below can copy them into the
+; admin-only %ProgramFiles%\TruePositive\elevated folder the Scheduled
+; Tasks actually run from -- never executed from {app} itself.
+Source: "elevated\*.ps1"; DestDir: "{app}\elevated"; Flags: ignoreversion
+Source: "sysmon_config.xml"; DestDir: "{app}\elevated"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
@@ -72,6 +81,7 @@ Type: files; Name: "{app}\agent_crash_log.json"
 Type: files; Name: "{app}\elevated_action_result.json"
 Type: files; Name: "{app}\elevated_actions.log"
 Type: files; Name: "{app}\install_debug.log"
+Type: dirifempty; Name: "{app}\elevated"
 Type: dirifempty; Name: "{app}"
 
 [Code]
@@ -90,12 +100,18 @@ end;
 // One-time, explicit, opt-in setup (the "autopermissions" task above) for
 // the two fixed, non-parameterized Scheduled Tasks tp_agent.py's
 // _run_privileged_action looks for -- "TruePositive Agent\GrantLogAccess"
-// and "TruePositive Agent\InstallSysmon". Each task's action is a fixed
-// command line (this app's own .exe, called with one fixed --elevated-action
-// flag) decided here at install time, not something the running agent (or
-// anything else) can alter later -- and each is scoped to /RU {username},
-// the specific person installing, not a system-wide account, so a
-// different standard user on a shared machine can't invoke them.
+// and "TruePositive Agent\InstallSysmon". Each task runs a fixed PowerShell
+// script (agent\elevated\*.ps1) that this step copies into
+// %ProgramFiles%\TruePositive\elevated -- a folder only administrators can
+// write. It must NOT point at anything under {app}: {app} is per-user
+// %LOCALAPPDATA%, so any process running as the user could replace the
+// target and then trigger the /RL HIGHEST task for silent admin rights
+// (the original design ran this app's own .exe from {app} -- fixed
+// 2026-10-04, see docs/AUDIT_2026-10-04.md). Each task is scoped to /RU
+// {username}, the specific person installing, so a different standard user
+// on a shared machine can't invoke them. The Program Files folder is left
+// behind on uninstall (removing it needs admin; it only holds these two
+// fixed scripts, the Sysmon config and their result files).
 //
 // One real UAC prompt covers creating both tasks (batched into one elevated
 // cmd.exe call) rather than two separate prompts. If the user declines it,
@@ -103,8 +119,8 @@ end;
 // per-action fallback (tp_agent.py's _run_privileged_action prompts UAC on
 // demand instead) -- see the message shown below on failure.
 // Uses the exact same elevation pattern already proven live to trigger a
-// real UAC prompt (tp_agent.py's _run_elevated_powershell: an elevated
-// PowerShell script via ShellExec's 'runas' verb) rather than a separate,
+// real UAC prompt (an elevated PowerShell script via ShellExec's 'runas'
+// verb, the same thing tp_agent.py's UAC fallback does) rather than a separate,
 // never-live-tested cmd.exe/batch-file mechanism -- consistency with a
 // known-working approach matters more here than it looks, since a subtle
 // difference (a batch file vs. a .ps1, cmd.exe vs. powershell.exe as the
@@ -116,20 +132,19 @@ end;
 // without a log to actually read afterward.
 procedure CreateScheduledTasksElevated();
 var
-  ExePath, ScriptPath, ScriptContent, LogPath, LaunchOkStr: String;
+  ScriptPath, ScriptContent, LogPath, LaunchOkStr: String;
   ResultCode: Integer;
   LaunchOk: Boolean;
 begin
   LogPath := ExpandConstant('{app}\install_debug.log');
   SaveStringToFile(LogPath, 'CreateScheduledTasksElevated: starting' + #13#10, True);
 
-  ExePath := ExpandConstant('{app}\{#MyAppExeName}');
   ScriptPath := ExpandConstant('{tmp}\tp_create_tasks.ps1');
 
   // Two real quoting bugs found and fixed by directly testing this exact
   // script content live (not by reasoning about it):
-  // 1. /TR's value needs its own embedded double-quotes around the exe
-  //    path (there's a space in "TruePositive Agent"). A bare embedded `"`
+  // 1. /TR's value needs its own embedded double-quotes around the script
+  //    path (there's a space in "Program Files"). A bare embedded `"`
   //    -- even built via a PowerShell variable, not a literal string --
   //    gets mangled by PowerShell's native-command argument re-parsing
   //    (schtasks received a truncated, invalid fragment). Escaping the
@@ -139,14 +154,18 @@ begin
   //    is what fixed it.
   // 2. /RU with a bare username ("Gio") failed with "The parameter is
   //    incorrect" -- the same class of identity-resolution issue already
-  //    found and fixed in tp_agent.py's _do_grant_log_access. Same fix
+  //    found and fixed in agent/elevated/grant_log_access.ps1. Same fix
   //    here: resolve the fully-qualified COMPUTERNAME\Username via
   //    WindowsIdentity instead of Inno's bare {username} constant.
   ScriptContent :=
-    '$exePath = "' + ExePath + '"' + #13#10 +
+    '$appElevated = "' + ExpandConstant('{app}\elevated') + '"' + #13#10 +
+    '$dir = Join-Path $env:ProgramFiles ''TruePositive\elevated''' + #13#10 +
+    'New-Item -ItemType Directory -Force -Path $dir | Out-Null' + #13#10 +
+    'Copy-Item -Force -Path (Join-Path $appElevated ''*'') -Destination $dir' + #13#10 +
     '$userName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name' + #13#10 +
-    '$tr1 = "\`"$exePath\`" --elevated-action grant_log_access"' + #13#10 +
-    '$tr2 = "\`"$exePath\`" --elevated-action install_sysmon"' + #13#10 +
+    '$ps = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File"' + #13#10 +
+    '$tr1 = "$ps \`"$dir\grant_log_access.ps1\`""' + #13#10 +
+    '$tr2 = "$ps \`"$dir\install_sysmon.ps1\`""' + #13#10 +
     '"[elevated script] running as $userName; tr1=$tr1" | Out-File -FilePath ''' + LogPath + ''' -Append' + #13#10 +
     'schtasks /Create /TN "TruePositive Agent\GrantLogAccess" /TR $tr1 /SC ONCE /ST 00:00 /RU $userName /RL HIGHEST /F 2>&1 | Out-File -FilePath ''' + LogPath + ''' -Append' + #13#10 +
     '$r1 = $LASTEXITCODE' + #13#10 +

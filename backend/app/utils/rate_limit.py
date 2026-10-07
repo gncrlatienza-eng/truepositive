@@ -15,22 +15,40 @@ budget either.
 
 import threading
 import time
-from collections import defaultdict
+import uuid
+from collections import deque
 from collections.abc import Callable
 
 from fastapi import HTTPException, Request, status
 
 _lock = threading.Lock()
-_buckets: dict[str, list[float]] = defaultdict(list)
+_buckets: dict[str, tuple[int, deque[float]]] = {}
+
+# Every key ever seen used to stay in memory forever -- an unauthenticated
+# loop over random agent ids / source IPs grew this dict without bound.
+# Buckets idle longer than this are dropped by a periodic sweep.
+_SWEEP_INTERVAL_SECONDS = 300
+_last_sweep = 0.0
+
+
+def _sweep(now: float) -> None:
+    global _last_sweep
+    if now - _last_sweep < _SWEEP_INTERVAL_SECONDS:
+        return
+    _last_sweep = now
+    stale = [key for key, (window, bucket) in _buckets.items() if not bucket or bucket[-1] < now - window]
+    for key in stale:
+        del _buckets[key]
 
 
 def _check(key: str, limit: int, window_seconds: int) -> tuple[bool, float]:
     now = time.monotonic()
     with _lock:
-        bucket = _buckets[key]
+        _sweep(now)
+        _, bucket = _buckets.setdefault(key, (window_seconds, deque()))
         cutoff = now - window_seconds
         while bucket and bucket[0] < cutoff:
-            bucket.pop(0)
+            bucket.popleft()
         if len(bucket) >= limit:
             retry_after = window_seconds - (now - bucket[0])
             return False, max(retry_after, 1.0)
@@ -39,12 +57,22 @@ def _check(key: str, limit: int, window_seconds: int) -> tuple[bool, float]:
 
 
 def _client_ip(request: Request) -> str:
+    # Behind the prod/Tailscale reverse proxy this is the real client IP only
+    # because uvicorn is started with FORWARDED_ALLOW_IPS there (see
+    # docker-compose.prod.yml) -- otherwise every request would share the
+    # proxy container's IP and one client could exhaust everyone's budget.
     return request.client.host if request.client else "unknown"
 
 
 def _agent_id(request: Request) -> str:
+    # Raw path text, checked before FastAPI's own UUID validation runs -- only
+    # trust it as a key if it's a real UUID, so junk ids can't each mint a
+    # fresh bucket.
     agent_id = request.path_params.get("agent_id")
-    return str(agent_id) if agent_id is not None else _client_ip(request)
+    try:
+        return str(uuid.UUID(str(agent_id)))
+    except ValueError:
+        return f"ip:{_client_ip(request)}"
 
 
 def rate_limit(

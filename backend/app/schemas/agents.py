@@ -48,8 +48,11 @@ class RelayProxyRequest(BaseModel):
     key: str = Field(min_length=1, max_length=255)
     kind: Literal["register", "heartbeat", "sources", "source_status", "logs"]
     hostname: str | None = Field(default=None, max_length=255)
-    logs: list[LogIngestItem] | None = None
-    source_status_results: list[SourceStatusItem] | None = None
+    # Same caps as the direct endpoints (LogIngestRequest/SourceStatusReport-
+    # Request) -- enforced here at parse time so an oversized relay payload
+    # is a clean 422, not a ValidationError raised mid-handler as a 500.
+    logs: list[LogIngestItem] | None = Field(default=None, min_length=1, max_length=500)
+    source_status_results: list[SourceStatusItem] | None = Field(default=None, max_length=500)
 
 
 class AgentDownloadRequest(BaseModel):

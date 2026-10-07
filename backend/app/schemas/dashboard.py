@@ -68,8 +68,9 @@ class StatusBanner(BaseModel):
     agents_online: int
     agents_total: int
     events_flowing: bool
-    events_per_min: float
+    events_per_min: float  # average over the last 5 minutes, by server receive time
     last_heartbeat_at: datetime | None
+    last_received_at: datetime | None = None  # when the newest log batch reached the server
     updated_at: datetime
 
 

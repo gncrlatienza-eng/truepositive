@@ -1,11 +1,12 @@
 import uuid
 from datetime import UTC, date, datetime
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
+from app.models.report import ReportType
 from app.models.user import User
 from app.schemas.reports import (
     ReportListItem,
@@ -33,6 +34,9 @@ def ping():
 # routes/alerts.py.
 
 
+MAX_CUSTOM_RANGE_DAYS = 366
+
+
 @router.get("/generate", response_model=ReportOut)
 def generate(
     type: GeneratableType,
@@ -42,6 +46,15 @@ def generate(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if period_start is not None and period_end is not None:
+        # Bounded so a far-past start date can't make report generation build
+        # millions of per-day buckets (or overflow date math into a 500).
+        if period_start > period_end:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "period_start must be on or before period_end")
+        if (period_end - period_start).days > MAX_CUSTOM_RANGE_DAYS:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, f"Custom range can span at most {MAX_CUSTOM_RANGE_DAYS} days"
+            )
     ref_date = date or datetime.now(UTC).date()
     return report_service.generate_report(
         db,
@@ -80,9 +93,9 @@ def delete_schedule(
 
 @router.get("", response_model=ReportListResponse)
 def list_reports(
-    type: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    type: ReportType | None = None,
+    limit: int = Query(default=50, ge=1),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

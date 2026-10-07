@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.report import Report, ReportType
 
@@ -9,7 +9,9 @@ from app.models.report import Report, ReportType
 class ReportScheduleCreate(BaseModel):
     report_type: str = Field(pattern="^(daily|weekly|monthly)$")
     frequency: str = Field(pattern="^(daily|weekly|monthly)$")
-    email: str = Field(min_length=3, max_length=320)
+    # EmailStr, not a bare str: a recipient with CR/LF in it would make the
+    # email library raise mid-send, after the report was already committed.
+    email: EmailStr = Field(max_length=320)
 
 
 class ReportScheduleOut(BaseModel):

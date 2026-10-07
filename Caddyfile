@@ -16,6 +16,12 @@
 	# to the backend and strip the /api prefix so backend routes (e.g.
 	# /reports/generate) don't need to know about it.
 	handle_path /api/* {
+		# Same 20MB cap as docker/nginx.conf -- large enough for a full
+		# 500-event agent batch, small enough that one request can't make
+		# the backend buffer gigabytes.
+		request_body {
+			max_size 20MB
+		}
 		reverse_proxy backend:8000
 	}
 
@@ -24,6 +30,8 @@
 	}
 
 	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"

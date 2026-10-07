@@ -2,7 +2,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -41,7 +41,7 @@ def search(
 @router.get("/lookup", response_model=IocLookupResult)
 def lookup(
     type: Literal["ip", "domain", "hash"],
-    value: str = Query(min_length=1, max_length=255),
+    value: str = Query(min_length=3, max_length=255),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -50,7 +50,9 @@ def lookup(
 
 class LinkToIncidentRequest(BaseModel):
     type: Literal["ip", "domain", "hash"]
-    value: str
+    # Same bounds as /lookup: an empty or one-character value would substring-
+    # match nearly every log and link every alert in the org to the incident.
+    value: str = Field(min_length=3, max_length=255)
     incident_id: uuid.UUID
 
 

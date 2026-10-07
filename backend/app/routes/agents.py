@@ -232,7 +232,11 @@ def heartbeat(
 # Polled by the agent each cycle rather than baked into its downloaded
 # config, so adding/editing/pausing a source in Settings takes effect
 # without redeploying the agent at all.
-@router.get("/{agent_id}/sources", response_model=list[AgentSourceOut])
+@router.get(
+    "/{agent_id}/sources",
+    response_model=list[AgentSourceOut],
+    dependencies=[Depends(rate_limit("agent_sources", limit=20, window_seconds=60, key_by=by_agent_id))],
+)
 def list_agent_sources(agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)):
     sources = log_source_service.list_active_local_sources_for_agent(db, agent.id)
     return [AgentSourceOut.model_validate(s) for s in sources]
@@ -260,7 +264,15 @@ def ingest_agent_logs(
 # Called once per collection cycle for every local source the agent was
 # assigned — independent of whether that cycle shipped any logs — so
 # Settings can show a genuinely agent-reported health status, not a guess.
-@router.post("/{agent_id}/sources/status", response_model=SourceStatusReportResponse)
+# Rate-limited like every other agent-key endpoint: each call runs a full
+# bcrypt verification, so an unthrottled endpoint is a free CPU-exhaustion
+# lever for anyone who knows an agent id. Called once per source per cycle,
+# hence the higher ceiling.
+@router.post(
+    "/{agent_id}/sources/status",
+    response_model=SourceStatusReportResponse,
+    dependencies=[Depends(rate_limit("agent_source_status", limit=120, window_seconds=60, key_by=by_agent_id))],
+)
 def report_agent_source_status(
     payload: SourceStatusReportRequest, agent: Agent = Depends(get_current_agent), db: Session = Depends(get_db)
 ):

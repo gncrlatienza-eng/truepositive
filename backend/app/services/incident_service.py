@@ -88,6 +88,14 @@ def create_incident(
 ) -> IncidentOut:
     from app.schemas.incidents import severity_to_score
 
+    # Same org check update_incident applies -- otherwise another org's user
+    # id could be stored as the assignee (and an unknown id surfaced as a
+    # 500 via the foreign key).
+    if payload.assignee_id is not None and (
+        db.scalar(select(User).where(User.id == payload.assignee_id, User.org_id == org_id)) is None
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Assignee not found in this org")
+
     inc = Incident(
         org_id=org_id,
         title=payload.title,

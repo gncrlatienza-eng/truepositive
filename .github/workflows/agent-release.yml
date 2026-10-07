@@ -1,0 +1,59 @@
+name: Agent release
+
+# Builds the Windows agent (PyInstaller exe + Inno Setup installer) and
+# publishes both to a GitHub Release. Trigger by pushing a tag:
+#   git tag agent-v1.0.1 && git push origin agent-v1.0.1
+# The stable "latest" URLs the dashboard and backend use:
+#   https://github.com/<owner>/<repo>/releases/latest/download/truepositive-agent-setup.exe
+#   https://github.com/<owner>/<repo>/releases/latest/download/truepositive-agent.exe
+
+on:
+  push:
+    tags: ["agent-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Same gate as ci.yml's agent job: never publish a build that fails tests.
+      - run: pip install pytest ruff "pyinstaller==6.*"
+      - run: ruff check --line-length 120 tp_agent.py test_tp_agent.py
+      - run: pytest -q test_tp_agent.py
+
+      - run: python -m PyInstaller tp_agent.spec
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^agent-v', ''
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DMyAppVersion=$version" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Get-FileHash dist\truepositive-agent.exe, dist\truepositive-agent-setup.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content dist\SHA256SUMS.txt
+          Get-Content dist\SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            agent/dist/truepositive-agent-setup.exe
+            agent/dist/truepositive-agent.exe
+            agent/dist/SHA256SUMS.txt
+          generate_release_notes: true

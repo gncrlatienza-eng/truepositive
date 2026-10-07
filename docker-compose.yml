@@ -57,12 +57,16 @@ services:
         VITE_API_URL: ${VITE_API_URL:-}
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3100:3000"
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      # "localhost" resolves to ::1 in this image's /etc/hosts, but nginx's
+      # `listen 3000;` only binds IPv4 -- wget was silently failing every
+      # check (connection refused on the v6 loopback) while the service
+      # itself was always fine, reporting a false "unhealthy" state.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
       interval: 10s
       timeout: 5s
       retries: 5

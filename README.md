@@ -48,7 +48,7 @@ docker-compose up -d
 docker-compose exec backend alembic upgrade head   # applies the schema (first run / after pulling new migrations)
 ```
 
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3100
 - Backend API: http://localhost:8000 (health check at `/health`)
 - Postgres: localhost:5432
 
@@ -69,7 +69,7 @@ Copy [`env.example`](env.example) to `.env` and fill in the values. `.env` is gi
 | `DATABASE_URL` | backend | Postgres connection string | `postgresql://truepositive:truepositive@localhost:5432/truepositive` — only needs to be correct for running the backend standalone (outside Docker); inside Docker, `docker-compose.yml` builds it from `POSTGRES_USER`/`POSTGRES_PASSWORD` above |
 | `JWT_SECRET` | backend | Signing key for auth tokens | a long random string |
 | `JWT_EXPIRE_MINUTES` | backend | Token lifetime in minutes | `43200` |
-| `CORS_ORIGINS` | backend | Comma-separated allowed frontend origins | `http://localhost:3000` |
+| `CORS_ORIGINS` | backend | Comma-separated allowed frontend origins | `http://localhost:3100` |
 | `CREDENTIAL_ENCRYPTION_KEY` | backend | Fernet key encrypting remote log-source credentials at rest | output of `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_USE_TLS` | backend | Optional — SMTP config for actually emailing scheduled reports | leave all unset to keep scheduled report delivery log-only; works with any SMTP provider (Gmail, Outlook, a self-hosted relay) |
 | `VITE_API_URL` | frontend (build-time) | Overrides the API base URL baked into the frontend build | leave blank — the built-in default is a relative `/api` path, proxied to the backend by nginx (prod) or Vite's dev server (`npm run dev`), so one built image works behind any domain with no rebuild. Only set this if the frontend needs to reach a backend that isn't behind that same-origin proxy. |
@@ -162,7 +162,7 @@ docker compose exec backend alembic upgrade head
 # One-time, persists across reboots as a background serve config. Check
 # `tailscale serve --help` for your installed version — serve's flags have
 # changed across Tailscale releases.
-tailscale serve --bg https / http://127.0.0.1:3000
+tailscale serve --bg https / http://127.0.0.1:3100
 ```
 
 From any other device on the same tailnet, browse to `https://<TS_HOSTNAME>` — the full dashboard works exactly as it does locally, through the same relative-`/api` + nginx-proxy path. To install an agent on another device: open the dashboard via that same `https://...` address (not `localhost`) when generating credentials in Settings → Sources — the Server URL shown there is derived from the page's own origin, so it'll already be the correct tailnet-reachable address to paste into the agent's connect form / installer / `--url` flag.

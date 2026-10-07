@@ -663,6 +663,10 @@ input[type="checkbox"]:focus-visible {
 .tp-pulse-dot {
   animation: tp-pulse 1.8s ease-out infinite;
 }
+/* One beat per real event (StatusBanner: a new log batch arrived). */
+.tp-pulse-once {
+  animation: tp-pulse 1.2s ease-out 1;
+}
 
 /* ScopeSwitcher's radial-menu FAB (see components/ScopeSwitcher.jsx) --
    ported from reference/Scope Switcher.dc.html's own ringPulse keyframe.
@@ -715,6 +719,7 @@ input[type="checkbox"]:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .tp-pulse-dot,
+  .tp-pulse-once,
   .tp-kpi-flash {
     animation: none;
   }
@@ -1202,6 +1207,13 @@ select.tp-field-input:hover {
 @media (max-width: 620px) {
   .tp-landing-header-nav {
     display: none;
+  }
+}
+/* Logo + both header buttons don't fit on the narrowest phones; the hero's
+   own "Create your workspace" button covers sign-up there. */
+@media (max-width: 420px) {
+  .tp-landing-header-signup {
+    display: none !important;
   }
 }
 

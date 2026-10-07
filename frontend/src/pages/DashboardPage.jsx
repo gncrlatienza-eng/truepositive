@@ -11,7 +11,6 @@ import { EventsOverTimeCard } from "../components/dashboard/EventsOverTimeCard";
 import { TopAlertTypesCard } from "../components/dashboard/TopAlertTypesCard";
 import { AlertQueueCard } from "../components/dashboard/AlertQueueCard";
 import { TopSourcesCard } from "../components/dashboard/TopSourcesCard";
-import { PipelineExplainer } from "../components/dashboard/PipelineExplainer";
 import MetricPanel from "../components/dashboard/MetricPanel";
 
 const WINDOWS = [
@@ -53,14 +52,22 @@ export default function DashboardPage() {
   const [timeWindow, setTimeWindow] = useState("24h");
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [openPanel, setOpenPanel] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(false);
     getDashboardSummary(timeWindow, scopedAgentId)
       .then((data) => {
         if (!cancelled) setSummary(data);
+      })
+      .catch(() => {
+        // Without this the first-load failure was an unhandled rejection
+        // and the page rendered nothing at all (summary stayed null).
+        if (!cancelled) setLoadError(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -71,7 +78,10 @@ export default function DashboardPage() {
     const interval = setInterval(() => {
       getDashboardSummary(timeWindow, scopedAgentId)
         .then((data) => {
-          if (!cancelled) setSummary(data);
+          if (!cancelled) {
+            setSummary(data);
+            setLoadError(false);
+          }
         })
         .catch(() => {});
     }, REFRESH_INTERVAL_MS);
@@ -80,7 +90,7 @@ export default function DashboardPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [timeWindow, scopedAgentId]);
+  }, [timeWindow, scopedAgentId, reloadKey]);
 
   if (loading && !summary) {
     return (
@@ -99,7 +109,29 @@ export default function DashboardPage() {
       </SetupLockOverlay>
     );
   }
-  if (!summary) return null;
+  if (!summary) {
+    return (
+      <SetupLockOverlay>
+        <div
+          role="alert"
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            alignItems: "center",
+            justifyContent: "center",
+            color: theme.color.textFaint,
+          }}
+        >
+          {loadError ? "Couldn't load the dashboard." : "No dashboard data yet."}
+          <button type="button" className="tp-btn tp-btn-outline" onClick={() => setReloadKey((k) => k + 1)}>
+            Try again
+          </button>
+        </div>
+      </SetupLockOverlay>
+    );
+  }
 
   return (
     <SetupLockOverlay>
@@ -182,8 +214,6 @@ export default function DashboardPage() {
               }}
             >
               <StatusBanner banner={summary.banner} onOpenAgents={() => setOpenPanel({ type: "agents" })} />
-
-              <PipelineExplainer />
 
               <CriticalActionStrip
                 criticalCount={Number(summary.kpis.find((k) => k.key === "critical")?.value || 0)}

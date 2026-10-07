@@ -1,0 +1,20 @@
+# Build context is the repo root (see docker-compose.yml). Keep host-only
+# artifacts out of images: a Windows .venv or host node_modules copied over
+# the in-image install breaks or bloats it, and secrets must never be baked in.
+.git
+.env
+.env.*
+!env.example
+**/.venv
+**/venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+frontend/dist
+agent/build
+agent/dist
+agent/agent_config.json
+agent/agent_state.json
+reference

@@ -371,6 +371,9 @@ def _ingest_summary(db: Session, org_id: uuid.UUID, window: Window, agent_id: uu
     )
 
 
+_RATE_WINDOW = timedelta(minutes=5)
+
+
 def get_summary(
     db: Session, org_id: uuid.UUID, window: Window = "24h", agent_id: uuid.UUID | None = None
 ) -> DashboardSummary:
@@ -383,11 +386,17 @@ def get_summary(
     # would just read "1/1" or "0/1"). Every other stat below does scope.
     online, total_agents = agent_service.count_online(db, org_id)
 
+    # Measured on created_at (when the server actually received the log),
+    # averaged over 5 minutes. The old version counted Log.timestamp (the
+    # event's own time on the device) in a 60s window -- but the agent ships
+    # in ~30s batches, so that window held one or two batches depending on
+    # when you looked, and the number jumped on every 2s dashboard refresh.
     events_per_min_stmt = (
         select(func.count())
         .select_from(Log)
-        .where(*_log_org_scope(org_id, agent_id), Log.timestamp >= now - timedelta(seconds=60))
+        .where(*_log_org_scope(org_id, agent_id), Log.created_at >= now - _RATE_WINDOW)
     )
+    last_received_stmt = select(func.max(Log.created_at)).where(*_log_org_scope(org_id, agent_id))
     last_heartbeat_stmt = select(func.max(Log.timestamp)).where(*_log_org_scope(org_id, agent_id))
     window_events_stmt = (
         select(func.count()).select_from(Log).where(*_log_org_scope(org_id, agent_id), Log.timestamp >= since)
@@ -408,7 +417,8 @@ def get_summary(
         agent_id,
     )
 
-    events_per_min = float(db.scalar(events_per_min_stmt) or 0)
+    events_per_min = (db.scalar(events_per_min_stmt) or 0) / (_RATE_WINDOW.total_seconds() / 60)
+    last_received_at = db.scalar(last_received_stmt)
     last_heartbeat_at = db.scalar(last_heartbeat_stmt)  # best real proxy for "last activity" available
     window_events = db.scalar(window_events_stmt) or 0
     prev_window_events = db.scalar(prev_window_events_stmt) or 0
@@ -494,6 +504,7 @@ def get_summary(
             events_flowing=ingest.status == "healthy",
             events_per_min=events_per_min,
             last_heartbeat_at=last_heartbeat_at,
+            last_received_at=last_received_at,
             updated_at=now,
         ),
         kpis=kpis,

@@ -43,6 +43,7 @@ running agents.
 """
 
 import argparse
+import base64
 import hashlib
 import http.server
 import json
@@ -54,7 +55,6 @@ import socket
 import ssl
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.error
@@ -73,6 +73,12 @@ STATE_FILENAME = "agent_state.json"
 # click past. Written on every status change by both run_gui and run_silent.
 STATUS_FILENAME = "agent_status.json"
 COLLECT_BATCH_LIMIT = 200
+# Must stay <= the backend's LogIngestRequest.logs max_length (see
+# backend/app/schemas/logs.py) -- a single source can return up to
+# COLLECT_BATCH_LIMIT events, so with several sources assigned, one combined
+# cycle can otherwise exceed the backend's cap and get a permanent 422 (see
+# _collect_and_ship's chunking).
+MAX_INGEST_BATCH_SIZE = 500
 # See _register_with_retry — capped exponential backoff (5s, 10s, 20s, 40s,
 # 60s, 60s, ...) for up to ~5 minutes, so a Docker cold-start after a reboot
 # (routinely 30s-2min+) doesn't strand a login-time launch with a near-
@@ -134,12 +140,10 @@ class AgentCredentialsError(AgentRequestError):
 
 
 def _safe_console_log(message: str) -> None:
-    # A real crash caught live: run_elevated_action's default log_fn was
-    # bare `print`, and a message built from a Sysinternals tool's raw
-    # subprocess output can contain characters the console's active
-    # codepage can't represent -- print() raised UnicodeEncodeError, taking
-    # down the whole one-shot elevated action with it (crash-recovery then
-    # self-relaunched it, working as designed but masking the real result).
+    # A real crash caught live: a log_fn that was bare `print` received a
+    # message built from a Sysinternals tool's raw subprocess output, which
+    # contained characters the console's active codepage can't represent --
+    # print() raised UnicodeEncodeError and took the whole action down.
     # Text arriving here can be anything an external process wrote; it must
     # never be trusted to be safely printable. sys.stdout is also None
     # outright for a frozen windowed (console=False) build -- nothing to
@@ -611,93 +615,34 @@ def _set_window_icon(root) -> None:
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def _run_elevated_powershell(inner_script: str, timeout: int = 180) -> tuple[bool, str]:
-    """Runs `inner_script` in a UAC-elevated PowerShell and waits for it to
-    finish. Two real script files (not a fragile inline -Command one-liner)
-    so there's no quoting/encoding to get wrong: the *outer* script (run
-    unelevated) launches the *inner* one elevated via Start-Process -Verb
-    RunAs -Wait, and translates "user clicked No on the UAC prompt" into a
-    distinct, recognizable exit code (1223 = Win32 ERROR_CANCELLED) rather
-    than an indistinguishable generic failure.
-    """
-    if platform.system() != "Windows":
-        return False, "This action is only available on Windows."
-    try:
-        with tempfile.TemporaryDirectory(prefix="tp_agent_elevate_") as tmp:
-            inner_path = Path(tmp) / "inner.ps1"
-            outer_path = Path(tmp) / "outer.ps1"
-            inner_path.write_text(inner_script, encoding="utf-8")
-            outer_path.write_text(
-                "try {\n"
-                "    $p = Start-Process -FilePath 'powershell.exe' -ArgumentList "
-                f"'-NoProfile','-ExecutionPolicy','Bypass','-File','{inner_path}' "
-                "-Verb RunAs -Wait -PassThru -ErrorAction Stop\n"
-                "    exit $p.ExitCode\n"
-                "} catch {\n"
-                "    exit 1223\n"
-                "}\n",
-                encoding="utf-8",
-            )
-            result = subprocess.run(
-                ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(outer_path)],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"Could not launch the elevated helper: {exc}"
-    except FileNotFoundError:
-        return False, "PowerShell was not found on this system."
-
-    if result.returncode == 0:
-        return True, "Done."
-    if result.returncode == 1223:
-        return False, "You declined the administrator prompt, so nothing was changed."
-    detail = (result.stderr or "").strip()[:200]
-    return False, f"The elevated step failed (exit code {result.returncode}){': ' + detail if detail else ''}"
-
-
-# ── Privileged data-source setup: two fixed, non-parameterized actions
-# ("grant_log_access", "install_sysmon") that need administrator rights, and
-# exactly one place each of them actually executes (_PRIVILEGED_ACTIONS /
-# run_elevated_action below) -- no matter which of two paths got there:
+# ── Privileged data-source setup: two fixed actions ("grant_log_access",
+# "install_sysmon") that need administrator rights. Each is a self-contained
+# PowerShell script in agent/elevated/, and this (never-elevated) agent only
+# ever *asks* for one to run, via one of two paths:
 #
 #   1. A pre-authorized Scheduled Task, created once during install with the
-#      user's real consent (see installer.iss) -- triggering it later runs
-#      that exact fixed command with no further UAC prompt, because the
-#      elevation decision was already made and recorded when the task
-#      itself was created, not at trigger time.
+#      user's real consent (see installer.iss). It runs the script from
+#      %ProgramFiles%\TruePositive\elevated, a folder only administrators can
+#      write, so triggering it later needs no UAC prompt and a same-user
+#      process can't swap what it executes. (The old design pointed the task
+#      at this .exe in user-writable %LOCALAPPDATA% -- replacing the exe and
+#      running the task was a silent route to admin.)
 #   2. If that task doesn't exist (skipped during install, or an older
-#      install predating this feature), fall back to an ad-hoc elevation
-#      that prompts UAC right then, running the identical underlying action.
+#      install predating this feature), fall back to an ad-hoc UAC prompt
+#      running the same script text inline via -EncodedCommand -- no script
+#      file on disk to tamper with between the prompt and execution.
 #
-# Neither path lets a caller substitute a different command -- the task's
-# own definition and the fallback's argv are both fixed strings built here,
-# never assembled from anything the (potentially less-trusted) unprivileged
-# process supplies at trigger time.
+# Results come back through ELEVATED_RESULTS_DIR (admin-write, user-read).
 # ──────────────────────────────────────────────────────────────────────────
 
 TASK_NAMES = {
     "grant_log_access": r"TruePositive Agent\GrantLogAccess",
     "install_sysmon": r"TruePositive Agent\InstallSysmon",
 }
-ELEVATED_ACTION_LOG_FILENAME = "elevated_actions.log"
-ELEVATED_ACTION_RESULT_FILENAME = "elevated_action_result.json"
-
-
-def _audit_log_elevated_action(action: str, success: bool, message: str) -> None:
-    # Every privileged action -- via the pre-authorized task or the ad-hoc
-    # fallback -- gets a permanent, timestamped local record. Never a
-    # silent, unaccountable elevated action.
-    line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} action={action} success={success} message={message}\n"
-    try:
-        with open(_app_dir() / ELEVATED_ACTION_LOG_FILENAME, "a", encoding="utf-8") as f:
-            f.write(line)
-    except OSError:
-        pass
-
-
+# Written only by the elevated scripts (agent/elevated/*.ps1). Program Files
+# is admin-writable / user-readable by default, which is the point: see
+# _read_elevated_result.
+ELEVATED_RESULTS_DIR = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "TruePositive" / "results"
 _CACHED_WINDOWS_IDENTITY_UNSET = object()
 _cached_windows_identity_value: str | None | object = _CACHED_WINDOWS_IDENTITY_UNSET
 
@@ -715,7 +660,7 @@ def _cached_windows_identity() -> str | None:
 
 def _current_windows_identity() -> str | None:
     # Reads the calling process's actual security token instead of trusting
-    # the USERNAME environment variable -- see _do_grant_log_access's
+    # the USERNAME environment variable -- see elevated/grant_log_access.ps1's
     # docstring for the real, live-observed reason this matters. Returns a
     # fully-qualified "COMPUTERNAME\Username" (or "DOMAIN\Username") form,
     # which net.exe localgroup accepts directly and unambiguously.
@@ -740,63 +685,6 @@ def _current_windows_identity() -> str | None:
     return name or None
 
 
-def _do_grant_log_access(log_fn=_safe_console_log) -> tuple[bool, str]:
-    """The actual privileged action -- assumes it's already running with
-    sufficient rights (via the pre-authorized task, or a fresh UAC prompt).
-    Adds the current user to Windows' built-in "Event Log Readers" group,
-    which grants standing read access to Security/System/Application/Sysmon
-    logs without ever running the whole agent elevated. Real, standard
-    approach -- the same one enterprise log-shipping agents (Winlogbeat
-    etc.) document -- not a workaround. Idempotent: already being a member
-    is treated as success, not an error.
-
-    Caveat surfaced in the returned message, not hidden: Windows computes a
-    user's group memberships into their access token at logon time, so this
-    doesn't take effect for the *current* login session -- the user needs to
-    log out and back in (or restart) before the agent can actually read the
-    channel, even though the grant itself just succeeded.
-
-    Uses `net.exe localgroup`, not PowerShell's `Add-LocalGroupMember` --
-    confirmed live that the latter has a real, known resolution bug on this
-    machine (`Add-LocalGroupMember : Member GIO\\Gio was not found in group
-    Event Log Readers`, even though the account plainly exists and the
-    group membership check is what's being asked to perform, not assumed
-    already true). `net localgroup` uses the older, simpler
-    NetLocalGroupAddMembers Win32 API path, which doesn't hit that
-    resolution issue.
-
-    Identity resolved via _current_windows_identity(), not the USERNAME
-    environment variable -- confirmed live that env var isn't reliable
-    across a UAC elevation boundary in every context: a real elevated run
-    passed it straight through to net.exe, which then failed with "System
-    error 1317: The specified account does not exist," even though the
-    account genuinely exists and is a local administrator. Whatever
-    USERNAME actually contained in that elevated process wasn't right;
-    reading the real security token directly doesn't have that dependency.
-    """
-    username = _current_windows_identity() or os.environ.get("USERNAME", "")
-    if not username:
-        return False, "Could not determine the current Windows identity."
-    try:
-        result = subprocess.run(
-            ["net.exe", "localgroup", "Event Log Readers", username, "/add"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"Could not grant access: {exc}"
-    already_member = "already a member" in (result.stdout + result.stderr).lower()
-    if result.returncode == 0 or already_member:
-        return True, (
-            "Access granted. You'll need to log out and back in (or restart) before this "
-            "takes effect — Windows only applies new group membership on your next login."
-        )
-    detail = (result.stderr or result.stdout or "").strip()[:200]
-    return False, f"Could not grant access (exit code {result.returncode}){': ' + detail if detail else ''}"
-
-
 CAPABILITIES_CHECK_INTERVAL_SECONDS = 300
 
 _capabilities_cache: dict = {}
@@ -804,7 +692,7 @@ _capabilities_last_checked = 0.0
 
 
 def _is_event_log_reader_member() -> bool | None:
-    """Proactive read-access check -- distinct from _do_grant_log_access
+    """Proactive read-access check -- distinct from the grant_log_access action
     (which only *fixes* an existing source's failure reactively, via
     _maybe_auto_fix_source). Lists the Event Log Readers local group and
     looks for the current user, so onboarding/Settings can show a real
@@ -817,7 +705,7 @@ def _is_event_log_reader_member() -> bool | None:
     if not identity:
         return None
     # net.exe localgroup /add accepts "DOMAIN\Username" (see
-    # _do_grant_log_access), but membership listing just prints bare
+    # elevated/grant_log_access.ps1), but membership listing just prints bare
     # usernames -- compare against the part after the backslash.
     bare_username = identity.rsplit("\\", 1)[-1]
     try:
@@ -892,186 +780,6 @@ def _is_sysmon_installed() -> bool:
     return result.returncode == 0
 
 
-def _verify_microsoft_signature(exe_path: Path) -> tuple[bool, str]:
-    """Checks the downloaded Sysmon binary's Authenticode signature is valid
-    and actually signed by Microsoft, before it's ever run -- this app just
-    downloaded and is about to elevate-install a third-party binary, and per
-    this project's own recent security hardening pass, that's exactly the
-    kind of step that should be verified, not trusted on HTTPS transport
-    alone (HTTPS proves the download wasn't tampered with in transit; it
-    says nothing about whether download.sysinternals.com itself is
-    compromised). Runs unelevated -- signature verification needs no admin.
-    """
-    script = (
-        "$ErrorActionPreference = 'Stop'\n"
-        f"$sig = Get-AuthenticodeSignature -FilePath '{exe_path}'\n"
-        "if ($sig.Status -ne 'Valid') { Write-Output \"INVALID:$($sig.Status)\"; exit 1 }\n"
-        "if ($sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') "
-        '{ Write-Output "WRONGSIGNER:$($sig.SignerCertificate.Subject)"; exit 1 }\n'
-        'Write-Output "OK"\n'
-    )
-    try:
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"Could not verify the download's signature: {exc}"
-    output = (result.stdout or "").strip()
-    if output == "OK":
-        return True, "Signature verified: Microsoft Corporation."
-    return False, f"Signature check failed ({output or 'unknown reason'}) — refusing to install an unverified binary."
-
-
-def _download_sysmon(log_fn=_safe_console_log) -> Path | None:
-    log_fn(f"Downloading Sysmon from {SYSMON_DOWNLOAD_URL} ...")
-    dest = Path(tempfile.gettempdir()) / "tp_agent_sysmon64.exe"
-    try:
-        with urllib.request.urlopen(SYSMON_DOWNLOAD_URL, timeout=30) as response, open(dest, "wb") as f:
-            shutil.copyfileobj(response, f)
-    except (urllib.error.URLError, OSError) as exc:
-        log_fn(f"Download failed: {exc}")
-        return None
-    log_fn(f"Downloaded ({dest.stat().st_size:,} bytes). Verifying it's genuinely from Microsoft...")
-    ok, message = _verify_microsoft_signature(dest)
-    log_fn(message)
-    if not ok:
-        dest.unlink(missing_ok=True)
-        return None
-    return dest
-
-
-def _do_install_sysmon(log_fn=_safe_console_log) -> tuple[bool, str]:
-    """The actual privileged action -- assumes it's already running with
-    sufficient rights. Re-downloads and re-verifies the signature itself
-    every single time this runs (rather than trusting a check some other,
-    less-privileged process might already have done): a compromised
-    unprivileged process could otherwise verify a genuine file, then swap it
-    for something else before an elevated step blindly ran whatever ended up
-    at that path. Downloading again inside the already-elevated context
-    closes that window instead of trusting a result computed outside it.
-    """
-    if _is_sysmon_installed():
-        return True, "Sysmon is already installed — nothing to do."
-    exe_path = _download_sysmon(log_fn)
-    if exe_path is None:
-        return False, "Download or signature verification failed — see the log above."
-    config_path = _resource_dir() / "sysmon_config.xml"
-    if not config_path.exists():
-        return False, f"Bundled Sysmon config not found at {config_path} — cannot install without one."
-    try:
-        result = subprocess.run(
-            [str(exe_path), "-accepteula", "-i", str(config_path)],
-            capture_output=True,
-            text=False,  # see _decode_sysinternals_output -- these tools write UTF-16, not the platform default
-            timeout=60,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"Sysmon install failed to launch: {exc}"
-    if result.returncode == 0:
-        return True, "Sysmon installed. The agent will pick up its channel on the next collection cycle."
-    detail = (_decode_sysinternals_output(result.stderr) or _decode_sysinternals_output(result.stdout))[:200]
-    return False, f"Sysmon install failed (exit code {result.returncode}){': ' + detail if detail else ''}"
-
-
-def _decode_sysinternals_output(data: bytes) -> str:
-    # Sysinternals tools (Sysmon included) write SOME console output (their
-    # startup banner, confirmed by capturing real bytes) as raw UTF-16-LE
-    # even when redirected to a pipe -- but not all of it: a short status
-    # line can come through as plain single-byte text (confirmed too: a
-    # failing run's stderr was the two literal bytes b'\r\n', not UTF-16).
-    # Blindly always decoding as UTF-16-LE previously turned that bare
-    # b'\r\n' into the single garbage codepoint U+0A0D, which crashed the
-    # whole action when printed (see _safe_console_log) -- a real bug caught
-    # live, not a hypothetical. Heuristic instead of a fixed assumption:
-    # genuine UTF-16-LE ASCII-range text has a null byte after nearly every
-    # real character, so if most odd-position bytes in a sample are \x00,
-    # treat it as UTF-16-LE; otherwise treat it as plain text. Guessing
-    # wrong on a very short string is low-stakes -- worst case is an
-    # uninformative (not garbled, not crashing) empty/odd result, and the
-    # caller already falls back to just the numeric exit code when this
-    # comes back empty.
-    if not data:
-        return ""
-    sample = data[:64]
-    odd_bytes = sample[1::2]
-    looks_utf16 = len(odd_bytes) >= 4 and (odd_bytes.count(0) / len(odd_bytes)) > 0.6
-    try:
-        text = data.decode("utf-16-le" if looks_utf16 else "utf-8")
-    except UnicodeDecodeError:
-        text = data.decode("utf-8", errors="replace")
-    return text.strip("﻿\r\n \t")
-
-
-_PRIVILEGED_ACTIONS = {
-    "grant_log_access": _do_grant_log_access,
-    "install_sysmon": _do_install_sysmon,
-}
-
-
-def run_elevated_action(action: str, log_fn=_safe_console_log) -> None:
-    """Entry point for `--elevated-action <name>` -- invoked either by the
-    pre-authorized Scheduled Task or by the ad-hoc UAC-prompted fallback
-    process (see _run_privileged_action). Deliberately the *only* place any
-    of these actions actually run, so whichever path got here, the exact
-    same fixed, audited logic executes -- there's no way for a caller to
-    substitute a different command, since `action` is restricted by
-    argparse's own `choices=` to this fixed dict's keys before this
-    function is ever reached.
-    """
-    # Unconditional, written before anything else can possibly go wrong --
-    # a real, live-observed mystery this is meant to resolve: a Scheduled-
-    # Task-triggered run of this exact action reported "Last Result: 0"
-    # (success) via `schtasks /Query`, yet neither the actual group
-    # membership change nor this function's own result file ever appeared.
-    # That's consistent with several very different root causes (the
-    # process not truly reaching this code at all despite exiting 0; a
-    # working-directory/permission quirk specific to how Task Scheduler
-    # launches a process that prevents the later file write; the elevated
-    # token not actually being what /RL HIGHEST implies in this exact
-    # trigger context) -- this marker, plus one at the very end, narrows
-    # down which by simply being present or absent afterward.
-    try:
-        (_app_dir() / ELEVATED_ACTION_LOG_FILENAME).open("a", encoding="utf-8").write(
-            f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} action={action} STARTED "
-            f"(cwd={os.getcwd()!r} argv={sys.argv!r})\n"
-        )
-    except OSError:
-        pass
-
-    do_fn = _PRIVILEGED_ACTIONS[action]
-    try:
-        success, message = do_fn(log_fn)
-    except Exception as exc:  # noqa: BLE001 — must always record *a* result, even on an unexpected crash
-        success, message = False, f"Unexpected error: {exc}"
-    log_fn(message)
-    _audit_log_elevated_action(action, success, message)
-    try:
-        (_app_dir() / ELEVATED_ACTION_RESULT_FILENAME).write_text(
-            json.dumps({"action": action, "success": success, "message": message}), encoding="utf-8"
-        )
-    except OSError as exc:
-        try:
-            (_app_dir() / ELEVATED_ACTION_LOG_FILENAME).open("a", encoding="utf-8").write(
-                f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} action={action} "
-                f"RESULT FILE WRITE FAILED: {exc!r}\n"
-            )
-        except OSError:
-            pass
-    sys.exit(0 if success else 1)
-
-
-def _self_invocation_command(extra_args: list[str]) -> list[str]:
-    # Same frozen-vs-dev-script distinction as _relaunch_self.
-    if getattr(sys, "frozen", False):
-        return [sys.executable, *extra_args]
-    return [sys.executable, str(Path(__file__).resolve()), *extra_args]
-
-
 def _scheduled_task_exists(name: str) -> bool:
     if platform.system() != "Windows":
         return False
@@ -1088,53 +796,138 @@ def _scheduled_task_exists(name: str) -> bool:
     return result.returncode == 0
 
 
-def _trigger_scheduled_task_and_wait(name: str, timeout: int = 180) -> tuple[bool, str]:
+def _read_elevated_result(action: str, not_before: float) -> tuple[bool, str] | None:
+    # The elevated scripts (agent/elevated/*.ps1) write their outcome to an
+    # admin-only folder this unelevated process can read but not write, so a
+    # result can't be forged and an elevated write can't be redirected. That
+    # also means a stale result can't be deleted from here -- instead it's
+    # only accepted if it finished after this attempt started.
+    try:
+        data = json.loads((ELEVATED_RESULTS_DIR / f"{action}.json").read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    if data.get("action") != action or float(data.get("finished_at", 0)) < not_before:
+        return None
+    return bool(data.get("success")), str(data.get("message", "Done."))
+
+
+def _trigger_scheduled_task_and_wait(action: str, timeout: int = 180) -> tuple[bool, str]:
     # schtasks /Run returns almost immediately -- it only signals the task
     # to start, it doesn't wait for it. Rather than parse schtasks' own
     # human-formatted /Query output to detect completion (fragile across
-    # locales/Windows versions), the elevated action itself writes a small
-    # result file when it finishes (run_elevated_action, above); poll for
-    # that instead. Deleted first so a stale result from a previous run
-    # can't be mistaken for this one.
-    result_path = _app_dir() / ELEVATED_ACTION_RESULT_FILENAME
-    result_path.unlink(missing_ok=True)
+    # locales/Windows versions), poll for the result the elevated script
+    # writes when it finishes.
+    started = int(time.time()) - 2  # small allowance for clock granularity
     try:
-        subprocess.run(["schtasks", "/Run", "/TN", name], capture_output=True, text=True, timeout=10, check=False)
+        subprocess.run(
+            ["schtasks", "/Run", "/TN", TASK_NAMES[action]], capture_output=True, text=True, timeout=10, check=False
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"Could not start the pre-authorized task: {exc}"
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if result_path.exists():
-            try:
-                data = json.loads(result_path.read_text(encoding="utf-8"))
-                return bool(data.get("success")), str(data.get("message", "Done."))
-            except (OSError, ValueError):
-                pass  # may have caught the file mid-write -- keep polling
+        result = _read_elevated_result(action, started)
+        if result is not None:
+            return result
         time.sleep(0.5)
     return False, "Timed out waiting for the pre-authorized task to finish."
 
 
+def _ps_quote(value: str) -> str:
+    # PowerShell single-quoted literal: the only special character is the
+    # quote itself, escaped by doubling. Used for every value interpolated
+    # into a PowerShell command, so a path or username containing an
+    # apostrophe (C:\Users\O'Brien) can't break out of the string.
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _encoded_command(script: str) -> str:
+    return base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+
+
+def _elevated_fallback_command(action: str) -> str | None:
+    """The full PowerShell script the UAC fallback runs elevated: the bundled
+    elevated/<action>.ps1 text plus its arguments, wrapped in a scriptblock.
+    Passed with -EncodedCommand, so no script file sits on disk between the
+    UAC prompt and execution where a same-user process could rewrite it.
+    """
+    try:
+        script = (_resource_dir() / "elevated" / f"{action}.ps1").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    args = ""
+    if action == "grant_log_access":
+        identity = _cached_windows_identity()
+        if identity:
+            args = f" -UserName {_ps_quote(identity)}"
+    elif action == "install_sysmon":
+        try:
+            config = (_resource_dir() / "sysmon_config.xml").read_bytes()
+        except OSError:
+            return None
+        args = f" -ConfigB64 {_ps_quote(base64.b64encode(config).decode('ascii'))}"
+    return f"& {{\n{script}\n}}{args}"
+
+
+def _run_elevated_fallback(action: str, timeout: int = 180) -> tuple[bool, str]:
+    """Ad-hoc UAC prompt for one fixed action, used when the installer's
+    pre-authorized Scheduled Task isn't there (or didn't run). Translates
+    "user clicked No" (Start-Process throws) into Win32 ERROR_CANCELLED
+    (1223) so it reads as a decline rather than a generic failure.
+    """
+    if platform.system() != "Windows":
+        return False, "This action is only available on Windows."
+    inner = _elevated_fallback_command(action)
+    if inner is None:
+        return False, f"The bundled script for '{action}' is missing from this build."
+    # One line, passed as plain -Command (not a second -EncodedCommand): the
+    # inner encoded script is already ~18k characters for install_sysmon, and
+    # re-encoding it would blow past Windows' 32,767-character command-line
+    # limit. The launcher itself only contains single-quoted literals.
+    launcher = (
+        "try { $p = Start-Process -FilePath 'powershell.exe' -ArgumentList "
+        "'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',"
+        f"{_ps_quote(_encoded_command(inner))} -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop; "
+        "exit $p.ExitCode } catch { exit 1223 }"
+    )
+    started = int(time.time()) - 2
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", launcher],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Could not launch the elevated helper: {exc}"
+    if result.returncode == 1223:
+        return False, "You declined the administrator prompt, so nothing was changed."
+    outcome = _read_elevated_result(action, started)
+    if outcome is not None:
+        return outcome
+    if result.returncode == 0:
+        return True, "Done."
+    detail = (result.stderr or "").strip()[:200]
+    return False, f"The elevated step failed (exit code {result.returncode}){': ' + detail if detail else ''}"
+
+
 def _run_privileged_action(action: str, log_fn=_safe_console_log, allow_prompt: bool = True) -> None:
-    task_name = TASK_NAMES[action]
-    if _scheduled_task_exists(task_name):
+    if _scheduled_task_exists(TASK_NAMES[action]):
         log_fn("Using the administrator access set up during installation — no prompt needed...")
         # A short timeout, not the 180s a fresh ad-hoc elevation reasonably
         # deserves (that one is genuinely waiting on a human to click a UAC
         # prompt) -- this path is supposed to be near-instant with nobody to
         # wait on, so a long hang here is itself evidence something's wrong.
-        ok, message = _trigger_scheduled_task_and_wait(task_name, timeout=30)
+        ok, message = _trigger_scheduled_task_and_wait(action, timeout=30)
         if ok:
             log_fn(message)
             return
         # Confirmed live on a real machine: a pre-authorized Scheduled Task
         # can report "Last Result: 0" (success) via `schtasks /Query` while
-        # never actually launching a process at all -- no result file, no
-        # audit log entry, no real-world effect. Trusting that claim
-        # blindly would silently strand this action forever on a machine
-        # where the scheduled-task mechanism doesn't work for some
-        # environment-specific reason. Fall through to the same ad-hoc
-        # prompt used when no pre-authorized task exists, rather than give
-        # up -- a real, if less convenient, path still exists.
+        # never actually launching a process at all. Fall through to the
+        # same ad-hoc prompt used when no pre-authorized task exists, rather
+        # than give up -- a real, if less convenient, path still exists.
         log_fn(f"The pre-authorized setup didn't complete as expected ({message}) — falling back to a direct prompt...")
 
     if not allow_prompt:
@@ -1151,20 +944,8 @@ def _run_privileged_action(action: str, log_fn=_safe_console_log, allow_prompt: 
         return
 
     log_fn("No pre-authorized setup found — requesting one-time administrator approval...")
-    argv = _self_invocation_command(["--elevated-action", action])
-    quoted = " ".join(f"'{a}'" for a in argv)
-    ok, elevate_message = _run_elevated_powershell(f"$ErrorActionPreference = 'Stop'\n& {quoted}\nexit $LASTEXITCODE\n")
-    if ok:
-        # The elevated child wrote its own result file with the real
-        # outcome -- prefer that over _run_elevated_powershell's generic
-        # "Done." if it's there.
-        try:
-            data = json.loads((_app_dir() / ELEVATED_ACTION_RESULT_FILENAME).read_text(encoding="utf-8"))
-            log_fn(str(data.get("message", elevate_message)))
-            return
-        except (OSError, ValueError):
-            pass
-    log_fn(elevate_message)
+    _ok, message = _run_elevated_fallback(action)
+    log_fn(message)
 
 
 # Tracks which privileged actions this *process* has already attempted, so a
@@ -1301,9 +1082,9 @@ def _tighten_file_permissions(path: Path, log_fn=print) -> None:
             # then *replaces* the file's whole ACL with that one bad grant --
             # not a partial/best-effort miss, a real lockout: the very same
             # user who just wrote the file loses all further read/write
-            # access to it, which is exactly what _do_grant_log_access's own
+            # access to it, which is exactly what the grant_log_access action's own
             # identical USERNAME-across-elevation bug already taught this
-            # codebase not to trust (see that function's docstring). Same
+            # codebase not to trust (see that script's header). Same
             # fix here: resolve the real identity instead.
             identity = _cached_windows_identity()
             if not identity:
@@ -1458,7 +1239,7 @@ def _query_windows_channel(
     creationflags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
     rd_flag = "true" if newest_first else "false"
     try:
-        result = subprocess.run(  # noqa: S603 — fixed executable name, no shell, args are ints/literals
+        result = subprocess.run(
             ["wevtutil", "qe", channel, f"/q:{xpath}", "/f:RenderedXml", f"/rd:{rd_flag}", f"/c:{limit}"],
             capture_output=True,
             text=True,
@@ -1630,31 +1411,42 @@ def _collect_and_ship(
 
     bookmarks = state.setdefault("bookmarks", {})
     now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    batch = []
-    # New bookmarks are staged separately and only merged into `bookmarks`
-    # (and persisted) once the batch actually ships — advancing them
-    # unconditionally here would drop this cycle's events for good if the
-    # POST below fails, since the in-memory position would already have
-    # moved past them even without a restart to reload the old on-disk value.
-    staged_bookmarks = {}
+    # Per-source event batches, kept separate (rather than one combined list)
+    # so shipping can be chunked below without ever splitting one source's
+    # own events across two requests -- each source maxes out at
+    # COLLECT_BATCH_LIMIT, which is always <= MAX_INGEST_BATCH_SIZE, so a
+    # source's events are always small enough to fit in a single chunk.
+    source_batches = []  # list of (source_id, [event dict, ...])
     source_results = []
     for source in sources:
         source_id = source["id"]
         events, new_bookmark, status, reason = _collect_source(source, bookmarks.get(source_id), log_fn)
-        staged_bookmarks[source_id] = new_bookmark
         source_results.append({"source_id": source_id, "status": status, "reason": reason})
         _maybe_auto_fix_source(source, status, reason, log_fn, allow_auto_fix_prompt)
-        for event in events:
-            batch.append(
-                {
-                    "source_id": source_id,
-                    "timestamp": event["timestamp"] or now_iso,
-                    "severity": event["severity"],
-                    "event_type": event["event_type"],
-                    "message": event["message"],
-                    "raw": {},
-                }
+        if events:
+            source_batches.append(
+                (
+                    source_id,
+                    new_bookmark,
+                    [
+                        {
+                            "source_id": source_id,
+                            "timestamp": event["timestamp"] or now_iso,
+                            "severity": event["severity"],
+                            "event_type": event["event_type"],
+                            "message": event["message"],
+                            "raw": {},
+                        }
+                        for event in events
+                    ],
+                )
             )
+        else:
+            # Nothing to ship for this source this cycle -- its bookmark
+            # (unchanged, or rebaselined per _collect_source) can't be lost
+            # by a POST failure, so it's safe to persist right away rather
+            # than gate it behind any chunk's shipping outcome below.
+            bookmarks[source_id] = new_bookmark
 
     # Reported every cycle regardless of whether anything shipped, so
     # Settings' health indicator reflects the agent's real last attempt —
@@ -1665,21 +1457,42 @@ def _collect_and_ship(
         except AgentRequestError as exc:
             log_fn(f"Could not report source status: {exc}")
 
-    if not batch:
-        bookmarks.update(staged_bookmarks)
+    if not source_batches:
         _save_state(state)
         return
 
-    try:
-        result = _ingest_logs(conn, agent_id, agent_key, batch)
-        log_fn(f"shipped {result['ingested']} log(s), {result['alerts_created']} alert(s) triggered")
-        bookmarks.update(staged_bookmarks)
-        _save_state(state)
-    except AgentRequestError as exc:
-        log_fn(f"Failed to ship logs: {exc}")
-        # Bookmarks intentionally left unadvanced — retry the same window
-        # next cycle rather than silently dropping events that never made
-        # it to the backend.
+    # Greedily group sources into chunks that stay under the backend's
+    # ingest cap. Each chunk ships independently: a failure in one chunk
+    # (e.g. after a long offline gap produces an oversized combined backlog)
+    # no longer wedges every other source's progress for good — only that
+    # chunk's sources are retried next cycle.
+    chunks = []
+    current_chunk: list[tuple[str, object, list[dict]]] = []
+    current_size = 0
+    for source_id, new_bookmark, events in source_batches:
+        if current_chunk and current_size + len(events) > MAX_INGEST_BATCH_SIZE:
+            chunks.append(current_chunk)
+            current_chunk = []
+            current_size = 0
+        current_chunk.append((source_id, new_bookmark, events))
+        current_size += len(events)
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    for chunk in chunks:
+        flat_batch = [event for _source_id, _new_bookmark, events in chunk for event in events]
+        try:
+            result = _ingest_logs(conn, agent_id, agent_key, flat_batch)
+            log_fn(f"shipped {result['ingested']} log(s), {result['alerts_created']} alert(s) triggered")
+            for source_id, new_bookmark, _events in chunk:
+                bookmarks[source_id] = new_bookmark
+            _save_state(state)
+        except AgentRequestError as exc:
+            log_fn(f"Failed to ship logs: {exc}")
+            _write_status("Collection failed", str(exc), agent_id)
+            # Bookmarks intentionally left unadvanced — retry the same window
+            # next cycle rather than silently dropping events that never made
+            # it to the backend.
 
 
 # Only for the packaged, frozen .exe — not a plain `python tp_agent.py` dev
@@ -2149,21 +1962,7 @@ def main() -> None:
         action="store_true",
         help="No window/taskbar entry — used by the Windows auto-start Registry key, not meant for manual use",
     )
-    parser.add_argument(
-        "--elevated-action",
-        choices=sorted(_PRIVILEGED_ACTIONS),
-        default=None,
-        help="Internal: runs one fixed privileged action and exits — invoked by the pre-authorized Scheduled "
-        "Task or the ad-hoc UAC fallback (see _run_privileged_action), not meant for manual use",
-    )
     args = parser.parse_args()
-
-    if args.elevated_action:
-        # Nothing above this point applies -- this is a one-shot privileged
-        # action, not a normal agent instance, so it deliberately skips the
-        # single-instance lock, config loading, and GUI/silent dispatch below.
-        run_elevated_action(args.elevated_action)
-        return
 
     cli_fields = (args.url, args.agent_id, args.agent_key)
     if any(cli_fields) and not all(cli_fields):
