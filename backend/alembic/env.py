@@ -8,7 +8,9 @@ from app.config import settings
 from app.database.session import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# ConfigParser treats "%" as interpolation; a URL-encoded password (common
+# for hosted Postgres like Supabase) would otherwise crash migrations.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
