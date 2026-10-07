@@ -45,6 +45,9 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy app
+      # Production (Render) builds its schema from migrations on an empty
+      # database; run them here too so a broken migration fails CI first.
+      - run: alembic upgrade head
       - run: pytest
 
   agent:
