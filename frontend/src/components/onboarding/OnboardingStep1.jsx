@@ -133,8 +133,18 @@ export default function OnboardingStep1({ onNext }) {
       });
       onNext();
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "Check the form for errors and try again.");
+      // No response at all means the request never reached the API (server
+      // asleep/unreachable, or blocked by CORS) -- not a form problem.
+      if (!err.response) {
+        setError(
+          "Can't reach the server. Wait a minute and try again; if it keeps failing, the server address or CORS setting is wrong.",
+        );
+        return;
+      }
+      const detail = err.response.data?.detail;
+      // FastAPI validation errors arrive as a list; show the first message.
+      const firstIssue = Array.isArray(detail) ? detail[0]?.msg?.replace(/^Value error, /, "") : null;
+      setError(typeof detail === "string" ? detail : firstIssue || "Check the form for errors and try again.");
     } finally {
       setSubmitting(false);
     }
