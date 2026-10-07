@@ -17,6 +17,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "0008"
@@ -76,7 +77,10 @@ def upgrade() -> None:
         sa.Column("actor_id", sa.UUID(), nullable=True),
         sa.Column(
             "kind",
-            sa.Enum(
+            # postgresql.ENUM, not sa.Enum: generic sa.Enum ignores
+            # create_type=False, so create_table re-issued CREATE TYPE for the
+            # enum created just above and failed on a fresh database.
+            postgresql.ENUM(
                 "created",
                 "status_changed",
                 "assigned",
