@@ -3,6 +3,7 @@ import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { createRelayChild } from "../../api/agents";
 import { downloadWindowsInstaller } from "../../utils/agentDownload";
+import { apiErrorMessage } from "../../utils/api";
 import Modal from "../common/Modal";
 
 const PLATFORMS = [
@@ -61,7 +62,7 @@ export default function DeployRelayChildModal({ open, onClose, hub, onChildCreat
       setResult(created);
       onChildCreated?.(created.agent);
     } catch (err) {
-      setError(err.response?.data?.detail || "Could not generate credentials. Try again.");
+      setError(apiErrorMessage(err, "Could not generate credentials. Try again."));
     } finally {
       setCreating(false);
     }

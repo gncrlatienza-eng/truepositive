@@ -1,0 +1,24 @@
+name: Keep alive
+
+# Pings the deployed backend's /health (which runs a SELECT 1) every 10 minutes
+# so Render's free tier doesn't sleep and Supabase's free tier doesn't pause
+# the project for inactivity. Set the repo variable HEALTH_URL to
+# https://<your-service>.onrender.com/health (Settings -> Secrets and
+# variables -> Actions -> Variables). Without it, the job is skipped.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    if: vars.HEALTH_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /health
+        # Render cold starts can take ~1 minute; retry rather than fail on the first try.
+        run: curl -fsS --retry 5 --retry-delay 20 --retry-all-errors --max-time 90 "${{ vars.HEALTH_URL }}"

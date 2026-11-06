@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
+import { apiErrorMessage } from "../utils/api";
 import AuthModalShell from "../components/auth/AuthModalShell";
 import { Field, TextInput, PrimaryButton, OutlineButton, ErrorBanner } from "../components/auth/fields";
 
@@ -24,7 +25,7 @@ export default function LoginPage() {
       await login({ email, password }, remember);
       navigate("/app");
     } catch (err) {
-      setError(err.response?.data?.detail || "Something went wrong. Try again.");
+      setError(apiErrorMessage(err, "Something went wrong. Try again."));
     } finally {
       setSubmitting(false);
     }

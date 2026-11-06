@@ -3,6 +3,7 @@ import { theme } from "../../styles/theme";
 import { OutlineButton, PrimaryButton, ErrorBanner } from "../auth/fields";
 import { createAgent, getAgent } from "../../api/agents";
 import { formatFullTimestamp } from "../../utils/format";
+import { apiErrorMessage } from "../../utils/api";
 import AgentCredentialsCard from "./AgentCredentialsCard";
 
 const PLATFORMS = [
@@ -49,7 +50,7 @@ export default function AgentEnrollmentPanel({ onAgentCreated, onConnected, allo
       setEnrollmentKey(created.enrollment_key);
       onAgentCreated?.(created.agent);
     } catch (err) {
-      setError(err.response?.data?.detail || "Could not generate credentials. Try again.");
+      setError(apiErrorMessage(err, "Could not generate credentials. Try again."));
     } finally {
       setCreating(false);
     }

@@ -1,5 +1,6 @@
 import logging
 
+from cryptography.fernet import Fernet
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +48,16 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Checked at boot, not on first use: a malformed key otherwise only surfaces
+# as a bare 500 the first time someone generates agent credentials.
+try:
+    Fernet(settings.credential_encryption_key.encode("utf-8"))
+except (ValueError, TypeError) as exc:
+    raise RuntimeError(
+        "CREDENTIAL_ENCRYPTION_KEY is not a valid Fernet key (32-byte urlsafe-base64). Generate one with: "
+        'python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+    ) from exc
 
 if len(settings.jwt_secret) < 32:
     # HS256 tokens signed with a short secret can be brute-forced offline from
