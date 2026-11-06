@@ -14,11 +14,11 @@ npm run dev       # http://localhost:3100
 npm run build     # production bundle to dist/
 ```
 
-Set `VITE_API_URL` in a `.env` file (see the root [README's Environment Variables section](../README.md#environment-variables)) to point at the backend. No `.env.example` is committed — create `.env` yourself.
+Set `VITE_API_URL` in a `.env` file (see [`docs/SELF_HOSTING.md`](../docs/SELF_HOSTING.md#environment-variables)) to point at the backend. No `.env.example` is committed — create `.env` yourself.
 
 ## Code Quality
 
-Enforced in CI (see root [README's Code Quality Standards](../README.md#code-quality-standards)). Config: `eslint.config.js` (flat config — `eslint-plugin-react` + `eslint-plugin-react-hooks`) and `.prettierrc.json`.
+Enforced in CI (see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)). Config: `eslint.config.js` (flat config — `eslint-plugin-react` + `eslint-plugin-react-hooks`) and `.prettierrc.json`.
 
 ```bash
 npm run lint            # eslint .
