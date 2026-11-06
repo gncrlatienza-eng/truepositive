@@ -1958,6 +1958,10 @@ def _show_connect_form() -> dict | None:
 
     def on_connect() -> None:
         nonlocal result
+        if not key_var.get().strip().isascii():
+            # Real keys are plain ASCII; dots mean the dashboard's masked key was copied.
+            error_var.set("That looks like the hidden key (dots). Use the Copy button next to it in the dashboard.")
+            return
         validated = _validate_connect_fields(
             address_var.get(), id_var.get(), key_var.get(), relay=mode_var.get() == "relay"
         )
