@@ -135,13 +135,23 @@ export default function AgentCredentialsCard({ agent, enrollmentKey, platform, e
 
         <span style={{ fontSize: 14, color: theme.color.textMuted }}>Enrollment key</span>
         <code style={codeCellStyle}>{revealKey ? enrollmentKey : "•".repeat(20)}</code>
-        <OutlineButton
-          type="button"
-          style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
-          onClick={() => setRevealKey((v) => !v)}
-        >
-          {revealKey ? "Hide" : "Reveal"}
-        </OutlineButton>
+        {/* Copy works while hidden: selecting the masked text copies the dots, not the key. */}
+        <div style={{ display: "flex", gap: theme.space[2] }}>
+          <OutlineButton
+            type="button"
+            style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
+            onClick={() => navigator.clipboard?.writeText(enrollmentKey)}
+          >
+            Copy
+          </OutlineButton>
+          <OutlineButton
+            type="button"
+            style={{ width: "auto", padding: "4px 10px", fontSize: 12 }}
+            onClick={() => setRevealKey((v) => !v)}
+          >
+            {revealKey ? "Hide" : "Reveal"}
+          </OutlineButton>
+        </div>
       </div>
 
       {platform === "windows" ? (
