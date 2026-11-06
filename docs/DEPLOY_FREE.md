@@ -56,6 +56,7 @@ Also pick an invite code for family (e.g. a short phrase).
    | `CREDENTIAL_ENCRYPTION_KEY` | from step 2 |
    | `SIGNUP_INVITE_CODE` | your family invite code |
    | `MAX_AGENTS` | `5` |
+   | `DEMO_ENABLED` | `true` (public read-only demo at `/demo`; its sample devices don't count toward `MAX_AGENTS`) |
    | `LOG_RETENTION_DAYS` | `2` |
    | `FORWARDED_ALLOW_IPS` | `*` (real client IPs for rate limiting behind Render's proxy) |
    | `AGENT_RELEASE_URL` | `https://github.com/gncrlatienza-eng/truepositive/releases/latest/download` |

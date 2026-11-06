@@ -4,7 +4,7 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import { apiErrorMessage } from "../utils/api";
 import AuthModalShell from "../components/auth/AuthModalShell";
-import { Field, TextInput, PrimaryButton, OutlineButton, ErrorBanner } from "../components/auth/fields";
+import { Field, TextInput, PrimaryButton, OutlineButton, OutlineLink, ErrorBanner } from "../components/auth/fields";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -129,6 +129,9 @@ export default function LoginPage() {
       <OutlineButton type="button" disabled title="SSO isn't configured yet">
         Continue with SSO (Okta)
       </OutlineButton>
+      <OutlineLink to="/demo" style={{ marginTop: theme.space[3] }}>
+        Try the live demo (no account needed)
+      </OutlineLink>
 
       <div
         style={{

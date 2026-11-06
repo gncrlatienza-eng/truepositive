@@ -7,9 +7,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.demo import DEMO_ORG_SLUG
 from app.models.agent import Agent, AgentStatus
 from app.models.log import Log
 from app.models.log_source import LogSource
+from app.models.org import Org
 from app.schemas.agents import AgentCreate, AgentRegisterRequest
 from app.utils.crypto import encrypt_secret
 from app.utils.security import enrollment_expired, generate_agent_key, hash_password
@@ -60,12 +62,15 @@ _CAPACITY_LOCK_KEY = 7_201_001
 def agents_in_use(db: Session) -> int:
     """Server-wide device count toward settings.max_agents. A pending agent
     whose enrollment window lapsed never connected and never will, so it
-    doesn't hold a slot."""
+    doesn't hold a slot. The public demo's sample devices aren't real, so
+    they don't hold one either."""
     return (
         db.scalar(
             select(func.count())
             .select_from(Agent)
+            .join(Org, Org.id == Agent.org_id)
             .where(or_(Agent.status != AgentStatus.PENDING, Agent.enrollment_expires_at > datetime.now(UTC)))
+            .where(Org.slug != DEMO_ORG_SLUG)
         )
         or 0
     )

@@ -567,6 +567,12 @@ export default function LandingPage() {
           >
             Create your workspace
           </PrimaryLink>
+          <OutlineLink
+            to="/demo"
+            style={{ width: "auto", display: "inline-block", padding: "14px 32px", fontSize: 15, marginLeft: 12 }}
+          >
+            Try the live demo
+          </OutlineLink>
         </div>
       </section>
 

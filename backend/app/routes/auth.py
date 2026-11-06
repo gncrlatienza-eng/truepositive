@@ -41,6 +41,16 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     return AuthResponse(access_token=token, user=UserOut.model_validate(user), org=OrgOut.model_validate(org))
 
 
+# Per-IP, like login: each call is cheap, but the first one creates the demo
+# workspace and its sample data.
+@router.post(
+    "/demo", response_model=AuthResponse, dependencies=[Depends(rate_limit("demo", limit=10, window_seconds=60))]
+)
+def demo(db: Session = Depends(get_db)):
+    token, user, org = auth_service.demo_login(db)
+    return AuthResponse(access_token=token, user=UserOut.model_validate(user), org=OrgOut.model_validate(org))
+
+
 @router.get("/me", response_model=MeResponse)
 def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     org = db.get(Org, current_user.org_id)

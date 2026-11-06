@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # agents and new signups get a "server full" error (agent_service).
     max_agents: int | None = None
 
+    # Public read-only demo workspace with sample data (services/demo_service).
+    demo_enabled: bool = False
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

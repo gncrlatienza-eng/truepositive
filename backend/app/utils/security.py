@@ -3,13 +3,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database.session import get_db
+from app.demo import DEMO_EMAIL
 from app.models.agent import Agent, AgentStatus
 from app.models.user import User
 
@@ -43,7 +44,11 @@ def create_access_token(subject: str, expires_minutes: int | None = None) -> str
     return jwt.encode({"sub": subject, "exp": expire}, settings.jwt_secret, algorithm=JWT_ALGORITHM)
 
 
+_READ_ONLY_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -60,6 +65,9 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None:
         raise unauthorized
+    # The shared public demo can look at everything but change nothing.
+    if user.email == DEMO_EMAIL and request.method not in _READ_ONLY_METHODS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "The demo account is read-only. Sign up to try this yourself.")
     return user
 
 
