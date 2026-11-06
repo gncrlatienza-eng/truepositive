@@ -400,7 +400,7 @@ export default function SourcesTab() {
         title={confirmTarget?.type === "agent" ? "Delete agent?" : "Delete data source?"}
         message={
           confirmTarget?.type === "agent"
-            ? `Delete agent "${confirmTarget.item.name}"? Any source pointed at it will be unlinked, not deleted.`
+            ? `Delete agent "${confirmTarget.item.name}"? Its logs stay searchable on the Logs page, but stop counting toward the Overview dashboard, which only shows current devices. Any source pointed at it will be unlinked, not deleted.`
             : `Delete "${confirmTarget?.item?.name}"? This can't be undone.`
         }
       />
