@@ -357,3 +357,49 @@ def test_delete_playbook_does_not_delete_incidents(client, auth_headers, db_sess
 
     # Incident must still exist.
     assert db_session.scalar(select(Incident).where(Incident.org_id == org_id)) is not None
+
+
+def test_ingest_batch_loads_playbooks_once(client, auth_headers, db_session, caplog):
+    """A 50-log upload queries the playbooks table once, not once per log, and
+    still evaluates every log (regression: per-log queries timed out the agent)."""
+    import logging
+    from datetime import UTC, datetime
+
+    from sqlalchemy import event
+
+    _create_playbook(client, auth_headers, trigger={"event_type": "batch-event"}, actions={"block_ip": True})
+    created = client.post("/agents", json={"name": "dc-01", "platform": "windows"}, headers=auth_headers).json()
+    agent_id, key = created["agent"]["id"], created["enrollment_key"]
+    source = client.post(
+        "/logs/sources",
+        json={"name": "Security", "type": "local", "agent_id": agent_id, "path": "Security"},
+        headers=auth_headers,
+    ).json()
+    entry = {
+        "source_id": source["id"],
+        "timestamp": datetime.now(UTC).isoformat(),
+        "severity": "high",
+        "event_type": "batch-event",
+        "message": "m",
+        "raw": {},
+    }
+
+    playbook_selects = []
+
+    def count(_conn, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith("SELECT") and "FROM playbooks" in statement:
+            playbook_selects.append(statement)
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", count)
+    try:
+        with caplog.at_level(logging.INFO, logger="app.services.playbook_service"):
+            response = client.post(
+                f"/agents/{agent_id}/logs", json={"logs": [entry] * 50}, headers={"X-Agent-Key": key}
+            )
+    finally:
+        event.remove(bind, "before_cursor_execute", count)
+
+    assert response.status_code == 200, response.text
+    assert len(playbook_selects) == 1
+    assert sum("[PLAYBOOK ACTION] block_ip" in r.message for r in caplog.records) == 50
