@@ -1,78 +1,86 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { theme } from "../styles/theme";
+import { PrimaryLink, OutlineLink } from "../components/auth/fields";
+import LivePipeline from "../components/landing/LivePipeline";
+import LiveDashboard from "../components/landing/LiveDashboard";
+import FeatureTabs from "../components/landing/FeatureTabs";
+import { useLiveDemo } from "../components/landing/useLiveDemo";
 import "./landing.css";
 
-// Marketing page, redesigned 2026-11-06 to read as a real product page rather
-// than a generated one: light page, one typeface (Public Sans) with mono used
-// only for actual log text, real screenshots instead of illustrations, and a
-// single motion moment (the hero's alert arriving after the raw event).
-// Every claim below is something the app does today; the "What it is and
-// isn't" section states the real limits instead of implying more.
+// Marketing page (2026-11-06). Same dark tokens, font, buttons and dashboard
+// components as the app, so the page is a preview of the product rather
+// than a separate look. Motion comes from one simulation (useLiveDemo): an
+// event arrives, a rule matches, an alert appears, and the dashboard
+// updates, the same pipeline the product runs. It pauses while the tab is
+// hidden and stays still for prefers-reduced-motion.
 
 const REPO_URL = "https://github.com/gncrlatienza-eng/truepositive";
 
 const STEPS = [
   {
     title: "Install the agent",
-    body: "Download the Windows installer from your dashboard and paste in the three values it shows you. It starts with Windows and sends new events over HTTPS.",
+    body: "Download the Windows installer from your dashboard and paste in the three values it shows. It starts with Windows and sends new events over HTTPS.",
   },
   {
     title: "Rules check every event",
-    body: "Detection rules, mapped to MITRE ATT&CK, score each event as it arrives. Known-bad IPs, domains and hashes from the threat feed are matched too.",
+    body: "Detection rules mapped to MITRE ATT&CK score each event as it arrives, and known-bad IPs, domains and hashes from the threat feed are matched too.",
   },
   {
     title: "Read what happened",
-    body: "Anything that matters becomes an alert that says what happened, on which device, and why the rule fired, in plain language.",
-  },
-];
-
-const FEATURES = [
-  {
-    title: "Alerts you can read",
-    body: "Each alert explains the Windows event behind it, what the MITRE technique means, and what to check next.",
-  },
-  {
-    title: "Rules you can change",
-    body: "Write conditions on event type, severity or message text, and they apply to the next event. No redeploy.",
-  },
-  {
-    title: "Incidents",
-    body: "Group related alerts into an incident with a status, a response deadline and a full history of who changed what.",
-  },
-  {
-    title: "Reports",
-    body: "Daily, weekly, monthly and compliance reports are generated every night and export to PDF.",
-  },
-  {
-    title: "Every device in one place",
-    body: "See each PC on its own or all of them together, with a heartbeat that tells you when one stops reporting.",
+    body: "Anything that matters becomes an alert that says what happened, on which device, and why the rule fired.",
   },
 ];
 
 const LIMITS = [
   {
     title: "Windows only, for now",
-    body: "The agent collects Windows event logs. Linux collection exists in the code but isn't tested.",
+    body: "The agent collects Windows event logs. Linux collection exists in the code but isn't tested yet.",
   },
   {
     title: "The installer isn't signed",
-    body: "Windows SmartScreen will warn the first time you run it. Choose More info, then Run anyway.",
+    body: "Windows SmartScreen warns the first time you run it. Choose More info, then Run anyway.",
   },
   {
     title: "Built to learn from",
-    body: "It's a portfolio project and a teaching tool, not a replacement for a staffed security team.",
+    body: "A portfolio project and a teaching tool, not a replacement for a staffed security team.",
   },
   {
     title: "Open source",
-    body: "MIT licensed. Run the hosted version or self-host the whole stack with Docker Compose.",
+    body: "MIT licensed. Use the hosted version or run the whole stack yourself with Docker Compose.",
   },
 ];
+
+// Adds .is-visible the first time an element scrolls into view.
+function useInView() {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || visible) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.4 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [visible]);
+  return [ref, visible];
+}
+
+const buttonStyle = { display: "inline-flex", width: "auto", padding: "12px 24px", fontSize: 15 };
 
 function Nav() {
   return (
     <header className="lp-nav">
       <div className="lp-wrap lp-nav-inner">
         <Link to="/" className="lp-logo">
-          <img src="/tp-logo.png" alt="" width={26} height={26} />
+          <img src="/tp-logo.png" alt="" width={28} height={28} />
           TruePositive
         </Link>
         <nav className="lp-nav-links" aria-label="Page sections">
@@ -84,97 +92,86 @@ function Nav() {
           <Link to="/login" className="lp-nav-login">
             Log in
           </Link>
-          <Link to="/demo" className="lp-btn lp-btn-primary lp-btn-sm">
+          <PrimaryLink to="/demo" style={{ ...buttonStyle, padding: "8px 18px", fontSize: 14 }}>
             Try the demo
-          </Link>
+          </PrimaryLink>
         </div>
       </div>
     </header>
   );
 }
 
-function Translation() {
+function HowItWorks() {
+  const [ref, visible] = useInView();
   return (
-    <div className="lp-translate">
-      <pre className="lp-raw lp-mono" aria-label="Raw Windows Security event">
-        <span className="k">2026-11-06 09:14:22 WIN-SOC-01 Security</span>
-        {"\n"}
-        <span className="k">EventID </span>4625 <span className="k">An account failed to log on.</span>
-        {"\n"}
-        <span className="k">TargetUserName </span>admin <span className="k"> LogonType </span>3{"\n"}
-        <span className="k">IpAddress </span>
-        <span className="hl">203.0.113.47</span>
-        <span className="k"> Status </span>0xC000006A
-        {"\n"}
-        <span className="k">… repeated </span>
-        <span className="hl">14 times</span>
-        <span className="k"> in 2 minutes</span>
-      </pre>
-      <p className="lp-raw-caption">What Windows records</p>
-
-      <article className="lp-alert lp-alert-animate" aria-label="The same event as a TruePositive alert">
-        <div className="lp-alert-head">
-          <span className="lp-sev">High</span>
-          <h2 className="lp-alert-title">Repeated failed sign-ins on WIN-SOC-01</h2>
-        </div>
-        <p className="lp-alert-body">
-          Someone at 203.0.113.47 tried to sign in as admin over the network and got the password wrong 14 times in two
-          minutes. That pattern usually means a password-guessing attempt.
-        </p>
-        <p className="lp-alert-why">
-          <strong>Why this fired:</strong> the Failed login burst rule matched. MITRE ATT&amp;CK T1110, Brute Force.
-        </p>
-      </article>
-      <p className="lp-alert-caption">What TruePositive shows you</p>
-    </div>
+    <ol ref={ref} className={visible ? "lp-steps is-visible" : "lp-steps"}>
+      {STEPS.map((step) => (
+        <li key={step.title}>
+          <h3>{step.title}</h3>
+          <p>{step.body}</p>
+        </li>
+      ))}
+    </ol>
   );
 }
 
 export default function LandingPage() {
+  const live = useLiveDemo();
+
   return (
-    <div className="lp">
+    <div
+      className="lp"
+      style={{
+        "--lp-bg": theme.color.background,
+        "--lp-surface": theme.color.surface,
+        "--lp-raised": theme.color.raised,
+        "--lp-border": theme.color.border,
+        "--lp-border-strong": theme.color.borderStrong,
+        "--lp-accent": theme.color.accent,
+        "--lp-text": theme.color.text,
+        "--lp-muted": theme.color.textMuted,
+        "--lp-faint": theme.color.textFaint,
+        "--lp-ok": theme.color.severity.ok,
+        "--lp-font": theme.font.body,
+        "--lp-mono": theme.font.mono,
+      }}
+    >
       <Nav />
 
       <main>
         <section className="lp-hero">
           <div className="lp-wrap lp-hero-grid">
-            <div>
+            <div className="lp-hero-copy">
               <h1 className="lp-h1">Security logs, in plain English.</h1>
               <p className="lp-lede">
-                TruePositive collects the event logs from your Windows PCs, checks them against detection rules, and
+                TruePositive collects the event logs from your Windows PCs, checks each one against detection rules, and
                 tells you what happened in words you don&apos;t need a security team to read.
               </p>
-              <div className="lp-hero-actions">
-                <Link to="/demo" className="lp-btn lp-btn-primary">
+              <div className="lp-actions">
+                <PrimaryLink to="/demo" style={buttonStyle}>
                   Try the live demo
-                </Link>
-                <Link to="/onboarding" className="lp-btn lp-btn-secondary">
+                </PrimaryLink>
+                <OutlineLink to="/onboarding" style={buttonStyle}>
                   Create a workspace
-                </Link>
+                </OutlineLink>
               </div>
-              <p className="lp-hero-note">The demo opens a read-only workspace with sample data. No signup.</p>
+              <p className="lp-note">The demo is a read-only workspace with sample data. No signup.</p>
             </div>
-            <Translation />
+            <LivePipeline stream={live.stream} active={live.active} activeAt={live.activeAt} />
           </div>
         </section>
 
-        <section className="lp-section" aria-labelledby="overview-heading">
+        <section className="lp-section" aria-labelledby="dashboard-heading">
           <div className="lp-wrap">
-            <h2 id="overview-heading" className="lp-h2">
-              One dashboard for every device you look after
+            <h2 id="dashboard-heading" className="lp-h2">
+              Every device on one screen
             </h2>
             <p className="lp-section-lede">
-              Events, open alerts and which devices are reporting, for the last day, week or month.
+              Which devices are reporting, how many events came in, and which alerts are still open. The alerts the feed
+              above detects land here too.
             </p>
-            <figure className="lp-shot">
-              <img
-                src="/marketing/hero-dashboard.png"
-                width={1400}
-                height={1265}
-                alt="The TruePositive overview: event counts, active and critical alerts, a risk score and an events timeline"
-              />
-              <figcaption>The overview page, with sample data.</figcaption>
-            </figure>
+            <LiveDashboard dashboard={live.dashboard} />
+            <p className="lp-caption">Sample data, drawn with the same components as the app.</p>
           </div>
         </section>
 
@@ -183,42 +180,16 @@ export default function LandingPage() {
             <h2 id="how-heading" className="lp-h2">
               How it works
             </h2>
-            <ol className="lp-steps">
-              {STEPS.map((step) => (
-                <li key={step.title}>
-                  <h3>{step.title}</h3>
-                  <p>{step.body}</p>
-                </li>
-              ))}
-            </ol>
+            <HowItWorks />
           </div>
         </section>
 
         <section id="features" className="lp-section" aria-labelledby="features-heading">
           <div className="lp-wrap">
             <h2 id="features-heading" className="lp-h2">
-              What you get
+              From alert to report
             </h2>
-            <div className="lp-features-grid">
-              <ul className="lp-features">
-                {FEATURES.map((feature) => (
-                  <li key={feature.title}>
-                    <h3>{feature.title}</h3>
-                    <p>{feature.body}</p>
-                  </li>
-                ))}
-              </ul>
-              <figure className="lp-shot">
-                <img
-                  src="/marketing/alert-detail.png"
-                  width={660}
-                  height={544}
-                  loading="lazy"
-                  alt="An alert opened in TruePositive: severity, rule, status, the source log line, and buttons to acknowledge, resolve, assign or link it to an incident"
-                />
-                <figcaption>An alert opened from the queue, with the log line that triggered it.</figcaption>
-              </figure>
-            </div>
+            <FeatureTabs />
           </div>
         </section>
 
@@ -243,13 +214,13 @@ export default function LandingPage() {
             <h2 id="cta-heading" className="lp-h2">
               See it with sample data first.
             </h2>
-            <div className="lp-hero-actions">
-              <Link to="/demo" className="lp-btn lp-btn-primary">
+            <div className="lp-actions">
+              <PrimaryLink to="/demo" style={buttonStyle}>
                 Try the live demo
-              </Link>
-              <Link to="/onboarding" className="lp-btn lp-btn-secondary">
+              </PrimaryLink>
+              <OutlineLink to="/onboarding" style={buttonStyle}>
                 Create a workspace
-              </Link>
+              </OutlineLink>
             </div>
           </div>
         </section>
