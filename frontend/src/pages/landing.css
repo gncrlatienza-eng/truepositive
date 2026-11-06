@@ -1,0 +1,547 @@
+/* Marketing landing page only (LandingPage.jsx). The app itself keeps the
+   dark theme in theme.js/index.css; this page is light so the real (dark)
+   product screenshots read as the product, not as decoration. */
+
+.lp {
+  --lp-bg: #f6f7f9;
+  --lp-surface: #ffffff;
+  --lp-ink: #15181d;
+  --lp-ink-2: #4a515c;
+  --lp-ink-3: #6b7380;
+  --lp-line: #dde1e6;
+  --lp-accent: #0b6e8f;
+  --lp-accent-hover: #095a75;
+  --lp-code-bg: #12161b;
+  --lp-code-ink: #c9d1d9;
+  --lp-code-dim: #7d8590;
+  --lp-high: #c2410c;
+  --lp-high-bg: #fff1e8;
+  --lp-radius: 8px;
+  --lp-gutter: clamp(20px, 5vw, 64px);
+  --lp-max: 1180px;
+
+  min-height: 100vh;
+  background: var(--lp-bg);
+  color: var(--lp-ink);
+  font-family:
+    "Public Sans",
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
+  font-size: 18px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+.lp *,
+.lp *::before,
+.lp *::after {
+  box-sizing: border-box;
+}
+
+.lp a {
+  color: var(--lp-accent);
+}
+
+.lp :focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.lp-wrap {
+  max-width: var(--lp-max);
+  margin: 0 auto;
+  padding: 0 var(--lp-gutter);
+}
+
+.lp-mono {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+/* ── Nav ─────────────────────────────────────────────────────────────── */
+
+.lp-nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(246, 247, 249, 0.92);
+  backdrop-filter: saturate(140%) blur(8px);
+  border-bottom: 1px solid var(--lp-line);
+}
+
+.lp-nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  height: 64px;
+}
+
+.lp-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  color: var(--lp-ink) !important;
+  text-decoration: none;
+}
+
+.lp-logo img {
+  width: 28px;
+  height: 28px;
+  padding: 3px;
+  border-radius: 6px;
+  /* The mark is drawn for the app's dark UI. */
+  background: var(--lp-ink);
+}
+
+.lp-nav-links {
+  display: flex;
+  gap: 24px;
+  font-size: 15px;
+}
+
+.lp-nav-links a,
+.lp-nav-login {
+  color: var(--lp-ink-2) !important;
+  text-decoration: none;
+}
+
+.lp-nav-links a:hover,
+.lp-nav-login:hover {
+  color: var(--lp-ink) !important;
+}
+
+.lp-nav-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 15px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: var(--lp-radius);
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: background-color 120ms ease-out;
+}
+
+.lp-btn-primary {
+  background: var(--lp-accent);
+  color: #fff !important;
+}
+
+.lp-btn-primary:hover {
+  background: var(--lp-accent-hover);
+}
+
+.lp-btn-secondary {
+  background: var(--lp-surface);
+  color: var(--lp-ink) !important;
+  border-color: var(--lp-line);
+}
+
+.lp-btn-secondary:hover {
+  background: #eef0f3;
+}
+
+.lp-btn-sm {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 15px;
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────── */
+
+.lp-hero {
+  padding: clamp(56px, 9vw, 112px) 0 clamp(56px, 8vw, 96px);
+}
+
+.lp-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: clamp(40px, 6vw, 80px);
+  align-items: center;
+}
+
+.lp-h1 {
+  margin: 0;
+  font-size: clamp(40px, 5.2vw, 64px);
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  max-width: 11ch;
+}
+
+.lp-lede {
+  margin: 24px 0 0;
+  max-width: 34em;
+  font-size: 19px;
+  color: var(--lp-ink-2);
+}
+
+.lp-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.lp-hero-note {
+  margin: 16px 0 0;
+  font-size: 15px;
+  color: var(--lp-ink-3);
+}
+
+/* The translation: raw event in, plain-language alert out. */
+.lp-translate {
+  position: relative;
+}
+
+.lp-raw {
+  margin: 0;
+  padding: 20px 22px;
+  border-radius: var(--lp-radius);
+  background: var(--lp-code-bg);
+  color: var(--lp-code-ink);
+  font-size: 13.5px;
+  line-height: 1.7;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.lp-raw .k {
+  color: var(--lp-code-dim);
+}
+
+.lp-raw .hl {
+  color: #ffb27a;
+}
+
+.lp-raw-caption,
+.lp-alert-caption {
+  margin: 10px 2px 0;
+  font-size: 14px;
+  color: var(--lp-ink-3);
+}
+
+.lp-alert-caption {
+  margin-left: calc(clamp(0px, 4vw, 48px) + 2px);
+}
+
+.lp-alert {
+  margin: 28px 0 0 clamp(0px, 4vw, 48px);
+  padding: 22px 24px;
+  border-radius: var(--lp-radius);
+  background: var(--lp-surface);
+  border: 1px solid var(--lp-line);
+  box-shadow:
+    0 1px 2px rgba(21, 24, 29, 0.06),
+    0 12px 32px -12px rgba(21, 24, 29, 0.18);
+}
+
+.lp-alert-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lp-sev {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lp-high);
+  background: var(--lp-high-bg);
+}
+
+.lp-alert-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.lp-alert-body {
+  margin: 12px 0 0;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--lp-ink);
+}
+
+.lp-alert-why {
+  margin: 14px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--lp-line);
+  font-size: 14.5px;
+  color: var(--lp-ink-2);
+}
+
+.lp-alert-why strong {
+  color: var(--lp-ink);
+  font-weight: 600;
+}
+
+/* The page's one moment of motion: the alert settles in once, after the
+   raw event, so the "in, then out" reading order is felt, not explained. */
+@keyframes lp-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lp-alert-animate {
+  animation: lp-arrive 520ms cubic-bezier(0.2, 0.7, 0.2, 1) 450ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-alert-animate {
+    animation: none;
+  }
+}
+
+/* ── Sections ────────────────────────────────────────────────────────── */
+
+.lp-section {
+  padding: clamp(64px, 9vw, 112px) 0;
+  border-top: 1px solid var(--lp-line);
+}
+
+.lp-h2 {
+  margin: 0;
+  font-size: clamp(28px, 3.2vw, 40px);
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  max-width: 22ch;
+}
+
+.lp-section-lede {
+  margin: 16px 0 0;
+  max-width: 36em;
+  color: var(--lp-ink-2);
+}
+
+.lp-shot {
+  margin: 48px 0 0;
+}
+
+.lp-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid #1f242b;
+  box-shadow: 0 24px 60px -24px rgba(21, 24, 29, 0.35);
+}
+
+.lp-shot figcaption {
+  margin-top: 14px;
+  font-size: 15px;
+  color: var(--lp-ink-3);
+}
+
+/* How it works: a real three-step sequence. */
+.lp-steps {
+  list-style: none;
+  margin: 48px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(28px, 4vw, 56px);
+  counter-reset: lp-step;
+}
+
+.lp-steps li {
+  counter-increment: lp-step;
+}
+
+.lp-steps li::before {
+  content: counter(lp-step);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid var(--lp-accent);
+  color: var(--lp-accent);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.lp-steps h3,
+.lp-features h3 {
+  margin: 16px 0 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lp-steps p,
+.lp-features p {
+  margin: 8px 0 0;
+  font-size: 16.5px;
+  color: var(--lp-ink-2);
+}
+
+/* Features beside the alert screenshot. */
+.lp-features-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(40px, 6vw, 80px);
+  align-items: start;
+  margin-top: 48px;
+}
+
+.lp-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 28px;
+}
+
+.lp-features h3 {
+  margin-top: 0;
+}
+
+.lp-features-grid .lp-shot {
+  margin: 0;
+  position: sticky;
+  top: 96px;
+}
+
+/* Honest limits. */
+.lp-limits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 56px;
+  margin: 40px 0 0;
+  padding: 0;
+  list-style: none;
+  max-width: 980px;
+}
+
+.lp-limits li {
+  font-size: 16.5px;
+  color: var(--lp-ink-2);
+}
+
+.lp-limits strong {
+  display: block;
+  color: var(--lp-ink);
+  font-weight: 600;
+}
+
+/* Closing call to action. */
+.lp-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.lp-cta .lp-hero-actions {
+  margin-top: 0;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────── */
+
+.lp-footer {
+  padding: 40px 0 48px;
+  border-top: 1px solid var(--lp-line);
+  font-size: 15px;
+  color: var(--lp-ink-3);
+}
+
+.lp-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  align-items: center;
+}
+
+.lp-footer nav {
+  display: flex;
+  gap: 24px;
+  margin-left: auto;
+}
+
+.lp-footer a {
+  color: var(--lp-ink-2) !important;
+}
+
+/* ── Small screens ───────────────────────────────────────────────────── */
+
+@media (max-width: 960px) {
+  .lp-hero-grid,
+  .lp-features-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lp-features-grid .lp-shot {
+    position: static;
+  }
+
+  .lp-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .lp {
+    font-size: 17px;
+  }
+
+  .lp-nav-links {
+    display: none;
+  }
+
+  .lp-limits {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lp-alert {
+    margin-left: 0;
+  }
+
+  .lp-alert-caption {
+    margin-left: 2px;
+  }
+
+  .lp-raw {
+    font-size: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 420px) {
+  .lp-nav-login {
+    display: none;
+  }
+}
