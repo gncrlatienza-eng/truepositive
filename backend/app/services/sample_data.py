@@ -40,6 +40,9 @@ RULES = [
 LOG_COUNT = 900
 ALERT_COUNT = 70
 
+# Sample devices shown as online; the third (edge-fw-02) stays offline on purpose.
+ONLINE_AGENT_NAMES = [f"{SEED_PREFIX} WIN-SOC-01", f"{SEED_PREFIX} lnx-jump-04"]
+
 
 def _random_business_hour_timestamp(now: datetime, days_back: int) -> datetime:
     day_offset = random.randint(0, days_back - 1)
@@ -229,3 +232,36 @@ def seed_sample_data(db: Session, org_id: uuid.UUID, days_back: int = 30) -> dic
         "logs": len(logs),
         "alerts": len(alerts),
     }
+
+
+def pulse_sample_agents(db: Session, org_id: uuid.UUID, max_new_logs: int = 4) -> int:
+    """Keeps the sample "online" devices checking in and adds a few fresh
+    events from them, so a sample workspace looks live instead of stalled.
+    Flushes but doesn't commit; returns how many events were added."""
+    now = datetime.now(UTC)
+    online = db.query(Agent).filter(Agent.org_id == org_id, Agent.name.in_(ONLINE_AGENT_NAMES)).all()
+    if not online:
+        return 0
+    for agent in online:
+        agent.status = AgentStatus.CONNECTED
+        agent.last_seen_at = now
+    sources = db.query(LogSource).filter(LogSource.agent_id.in_([a.id for a in online])).all()
+    new_logs = []
+    for _ in range(random.randint(1, max_new_logs) if sources else 0):
+        source = random.choice(sources)
+        event_type = random.choice(EVENT_TYPES)
+        new_logs.append(
+            Log(
+                org_id=org_id,
+                source_id=source.id,
+                agent_id=source.agent_id,
+                timestamp=now - timedelta(seconds=random.randint(0, 40)),
+                severity=random.choices([Severity.HIGH, Severity.MEDIUM, Severity.OK], weights=[5, 25, 70])[0],
+                event_type=event_type,
+                message=f"{event_type} on {source.host}",
+                raw={"host": source.host},
+            )
+        )
+    db.add_all(new_logs)
+    db.flush()
+    return len(new_logs)

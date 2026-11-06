@@ -76,3 +76,33 @@ def test_signup_cannot_take_the_demo_workspace_slug(client):
         },
     )
     assert response.status_code == 409
+
+
+def test_pulse_keeps_sample_devices_online(client, auth_headers, db_session):
+    import uuid
+    from datetime import UTC, datetime, timedelta
+
+    from app.models.agent import Agent
+    from app.models.log import Log
+    from app.services.sample_data import ONLINE_AGENT_NAMES, pulse_sample_agents, seed_sample_data
+
+    org_id = uuid.UUID(client.get("/auth/me", headers=auth_headers).json()["org"]["id"])
+    seed_sample_data(db_session, org_id, days_back=2)
+    agents = db_session.query(Agent).filter(Agent.org_id == org_id).all()
+    for agent in agents:
+        agent.last_seen_at = datetime.now(UTC) - timedelta(minutes=10)
+    db_session.flush()
+    logs_before = db_session.query(Log).filter(Log.org_id == org_id).count()
+
+    added = pulse_sample_agents(db_session, org_id)
+
+    assert added >= 1
+    assert db_session.query(Log).filter(Log.org_id == org_id).count() == logs_before + added
+    db_session.flush()
+
+    # What the dashboard shows: 2 of the 3 sample devices online, events flowing.
+    banner = client.get("/dashboard/summary", headers=auth_headers).json()["banner"]
+    assert (banner["agents_online"], banner["agents_total"]) == (2, 3)
+    assert banner["events_flowing"] is True
+    offline = [a for a in agents if a.name not in ONLINE_AGENT_NAMES]
+    assert len(offline) == 1 and offline[0].last_seen_at < datetime.now(UTC) - timedelta(minutes=5)

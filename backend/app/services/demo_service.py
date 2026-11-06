@@ -17,7 +17,7 @@ from app.database.session import SessionLocal
 from app.demo import DEMO_DATA_DAYS, DEMO_EMAIL, DEMO_ORG_NAME, DEMO_ORG_SLUG
 from app.models.org import Org
 from app.models.user import User, UserRole
-from app.services.sample_data import seed_sample_data
+from app.services.sample_data import pulse_sample_agents, seed_sample_data
 from app.utils.security import hash_password
 
 logger = logging.getLogger(__name__)
@@ -72,5 +72,26 @@ def refresh_demo_data() -> None:
     except Exception:
         db.rollback()
         logger.exception("[DEMO] refresh failed")
+    finally:
+        db.close()
+
+
+def pulse_demo() -> None:
+    """Scheduler entry point, every 45s: the demo's sample devices check in
+    (they'd show offline after agent_service.STALE_AFTER otherwise) and send
+    a few fresh events, so the dashboard looks like a live setup."""
+    if not settings.demo_enabled:
+        return
+    db = SessionLocal()
+    try:
+        org = db.scalar(select(Org).where(Org.slug == DEMO_ORG_SLUG))
+        user = db.scalar(select(User).where(User.email == DEMO_EMAIL))
+        # Only touch the workspace if it really is the demo's.
+        if org is not None and user is not None and user.org_id == org.id:
+            pulse_sample_agents(db, org.id)
+            db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("[DEMO] pulse failed")
     finally:
         db.close()
