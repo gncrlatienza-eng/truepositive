@@ -14,7 +14,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Requires a running Postgres instance reachable at `DATABASE_URL`, set in a `.env` file you create yourself (no `.env.example` is committed — see the root [README's Environment Variables section](../README.md#environment-variables)).
+Requires a running Postgres instance reachable at `DATABASE_URL`, set in a `.env` file you create yourself (no `.env.example` is committed — see [`docs/SELF_HOSTING.md`](../docs/SELF_HOSTING.md#environment-variables)).
 
 ## Database
 
@@ -73,7 +73,7 @@ Run from `backend/`, against whatever `DATABASE_URL` your environment is already
 
 ## Code Quality
 
-Enforced in CI (see root [README's Code Quality Standards](../README.md#code-quality-standards)). Config lives in `pyproject.toml`; dev tools in `requirements-dev.txt` (not in the production `requirements.txt`):
+Enforced in CI (see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)). Config lives in `pyproject.toml`; dev tools in `requirements-dev.txt` (not in the production `requirements.txt`):
 
 ```bash
 pip install -r requirements-dev.txt   # once, adds ruff + mypy on top of requirements.txt
