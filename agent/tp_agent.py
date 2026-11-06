@@ -215,6 +215,11 @@ def _open_and_parse(request: urllib.request.Request, url: str) -> dict | object:
         raise AgentRequestError(_http_error_message(url, exc), status_code=exc.code) from exc
     except urllib.error.URLError as exc:
         raise AgentRequestError(f"Could not reach {url}: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        # Usually the Server URL points at the dashboard (an HTML page), not the API.
+        raise AgentRequestError(f"{url} did not return API data -- check the Server URL") from exc
+    except OSError as exc:  # e.g. a read timeout, which urlopen doesn't wrap in URLError
+        raise AgentRequestError(f"Could not reach {url}: {exc}") from exc
 
 
 def _post(url: str, agent_key: str, body: dict) -> dict:
@@ -1730,6 +1735,10 @@ def run_gui(config: dict, agent_id: str, agent_key: str) -> None:
             set_status("Connection failed", str(exc))
             log(str(exc))
             return
+        except Exception as exc:  # noqa: BLE001 -- shown in the window instead of the thread dying silently
+            set_status("Connection failed", str(exc))
+            log(f"Registration failed: {exc}")
+            return
         if agent is None:
             if not stop_event.is_set():
                 set_status("Connection failed", "Could not reach the server after repeated retries.")
@@ -1868,6 +1877,10 @@ def _validate_connect_fields(address: str, agent_id: str, agent_key: str, *, rel
         # needs beyond what direct-connect already has: no "url" at all,
         # since this device is never meant to reach the real backend itself.
         return {"relay_mode": True, "hub_relay_url": address, "id": agent_id, "key": agent_key}
+    if "://" not in address:
+        # A pasted bare host ("example.onrender.com") would otherwise make
+        # urllib raise "unknown url type".
+        address = f"https://{address}"
     return {"url": address, "id": agent_id, "key": agent_key}
 
 

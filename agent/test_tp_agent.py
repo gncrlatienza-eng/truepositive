@@ -2,7 +2,9 @@ import io
 import subprocess
 import threading
 import urllib.error
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, call, patch
+
+import pytest
 
 import tp_agent
 
@@ -246,6 +248,29 @@ def test_collect_and_ship_zero_event_source_bookmark_persists_despite_other_fail
         tp_agent._collect_and_ship({}, "agent-1", "key-1", state)
 
     assert state["bookmarks"] == {"quiet": "bookmark-quiet"}
+
+
+def test_validate_connect_fields_adds_https_to_bare_host():
+    result = tp_agent._validate_connect_fields("example.onrender.com/", "agent-1", "key-1")
+    assert result["url"] == "https://example.onrender.com"
+
+
+def test_open_and_parse_html_response_raises_agent_request_error():
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = b"<!doctype html><html></html>"
+    with (
+        patch("tp_agent.urllib.request.urlopen", return_value=response),
+        pytest.raises(tp_agent.AgentRequestError, match="did not return API data"),
+    ):
+        tp_agent._open_and_parse(MagicMock(), "https://dash.example/api/x")
+
+
+def test_open_and_parse_read_timeout_raises_agent_request_error():
+    with (
+        patch("tp_agent.urllib.request.urlopen", side_effect=TimeoutError("timed out")),
+        pytest.raises(tp_agent.AgentRequestError, match="Could not reach"),
+    ):
+        tp_agent._open_and_parse(MagicMock(), "https://api.example/x")
 
 
 def test_validate_connect_fields_rejects_missing_or_blank():
