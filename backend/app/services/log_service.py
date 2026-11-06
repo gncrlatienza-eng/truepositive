@@ -94,10 +94,14 @@ def ingest_logs(db: Session, agent: Agent, payload: LogIngestRequest) -> LogInge
     # philosophy established by alert-rule evaluation above (Sprint 5).
     # Imported here to avoid the circular dependency: playbook_service imports
     # _SEVERITY_RANK from this module.
-    from app.services.playbook_service import evaluate_playbooks_for_log
+    from app.services.playbook_service import evaluate_playbooks_for_log, load_enabled_playbooks
 
-    for log in logs:
-        evaluate_playbooks_for_log(db, agent.org_id, log)
+    # Loaded once per batch: a query per log made a 500-log upload slow enough
+    # (one DB round trip each) to time out the agent and get resent as duplicates.
+    playbooks = load_enabled_playbooks(db, agent.org_id)
+    if playbooks:
+        for log in logs:
+            evaluate_playbooks_for_log(db, agent.org_id, log, playbooks)
 
     db.commit()
     return LogIngestResponse(ingested=len(logs), alerts_created=alerts_created)

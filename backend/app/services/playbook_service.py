@@ -1,5 +1,6 @@
 import logging
 import uuid
+from collections.abc import Sequence
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -88,7 +89,13 @@ def delete_playbook(db: Session, org_id: uuid.UUID, playbook_id: uuid.UUID) -> N
     db.commit()
 
 
-def evaluate_playbooks_for_log(db: Session, org_id: uuid.UUID, log: Log) -> None:
+def load_enabled_playbooks(db: Session, org_id: uuid.UUID) -> Sequence[Playbook]:
+    return db.scalars(select(Playbook).where(Playbook.org_id == org_id, Playbook.enabled)).all()
+
+
+def evaluate_playbooks_for_log(
+    db: Session, org_id: uuid.UUID, log: Log, playbooks: Sequence[Playbook] | None = None
+) -> None:
     """Evaluate all enabled playbooks against a freshly-ingested log.
 
     Called synchronously from log_service.ingest_logs after alert creation,
@@ -103,8 +110,12 @@ def evaluate_playbooks_for_log(db: Session, org_id: uuid.UUID, log: Log) -> None
 
     Stub actions are structured log lines so they're auditable and searchable
     in Docker logs without needing a real integration this sprint.
+
+    Pass ``playbooks`` when evaluating a batch so they're loaded once, not
+    once per log.
     """
-    playbooks = db.scalars(select(Playbook).where(Playbook.org_id == org_id, Playbook.enabled)).all()
+    if playbooks is None:
+        playbooks = load_enabled_playbooks(db, org_id)
 
     for pb in playbooks:
         if not _trigger_matches(log, pb.trigger_conditions):
