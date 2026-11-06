@@ -101,6 +101,8 @@ RESTART_WINDOW_SECONDS = 600
 # nowhere server-side since the backend never talks to this port directly —
 # only another instance of this same script (running as a relay child) does.
 RELAY_LISTEN_PORT = 47824
+# Non-Windows sources are plain files; the agent only ever reads under here.
+ALLOWED_LOG_ROOT = Path("/var/log")
 # Must match the backend's routes/agents.py — the dashboard's one-click
 # download appends this marker + a JSON config directly onto a copy of this
 # program's own compiled .exe, so double-clicking it needs nothing else next
@@ -1382,6 +1384,12 @@ def _collect_source(source: dict, bookmark, log_fn=print) -> tuple[list[dict], o
             return [], bookmark, status, reason
         new_bookmark = max(e["record_id"] for e in events)
         return events, new_bookmark, status, reason
+
+    # The path comes from the server, so a hijacked server or dashboard
+    # account must not be able to point this at ~/.ssh or similar. resolve()
+    # follows symlinks and "..", so the check is on the real target.
+    if not Path(path).resolve().is_relative_to(ALLOWED_LOG_ROOT.resolve()):
+        return [], bookmark, "error", f"Refusing to read {path}: only files under {ALLOWED_LOG_ROOT} are allowed."
 
     if bookmark is None:
         # Same first-cycle rule as above, applied via byte offset: start from

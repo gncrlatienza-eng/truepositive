@@ -65,6 +65,23 @@ def test_collect_source_missing_path_reports_error():
     assert reason == "No path configured for this source."
 
 
+def test_collect_source_refuses_files_outside_var_log():
+    with patch("tp_agent.platform.system", return_value="Linux"):
+        for path in ("/home/user/.ssh/id_rsa", "/var/log/../../etc/shadow"):
+            events, bookmark, status, reason = tp_agent._collect_source({"id": "x", "path": path}, None)
+            assert (events, bookmark, status) == ([], None, "error")
+            assert "only files under" in reason
+
+
+def test_collect_source_allows_files_under_var_log():
+    with (
+        patch("tp_agent.platform.system", return_value="Linux"),
+        patch("tp_agent._tail_local_file", return_value=([], 10, "ok", None)) as tail,
+    ):
+        assert tp_agent._collect_source({"id": "x", "path": "/var/log/auth.log"}, 0)[2] == "ok"
+    tail.assert_called_once()
+
+
 def test_collect_source_windows_idle_cycle_keeps_bookmark():
     # A genuinely quiet channel (no new events since last cycle) must not be
     # mistaken for a reset -- the reset-check's own newest-id query still

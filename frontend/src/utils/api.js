@@ -37,6 +37,20 @@ api.interceptors.response.use(
   },
 );
 
+// Turns an axios error into something a person can act on: the API's own
+// message when it sent one, a reachability hint when nothing came back
+// (server asleep/down, or blocked by CORS), and the status code otherwise.
+export function apiErrorMessage(err, fallback) {
+  if (!err.response) {
+    return "Can't reach the server. Wait a minute and try again; if it keeps failing, the server may be down.";
+  }
+  const detail = err.response.data?.detail;
+  if (typeof detail === "string") return detail;
+  // FastAPI validation errors arrive as a list; show the first message.
+  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg.replace(/^Value error, /, "");
+  return `${fallback} (server error ${err.response.status})`;
+}
+
 export function setAuthToken(token) {
   if (token) {
     api.defaults.headers.common.Authorization = `Bearer ${token}`;
