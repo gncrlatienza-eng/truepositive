@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.demo import DEMO_DATA_DAYS, DEMO_ORG_SLUG
 from app.models.org import Org
 from app.models.user import User, UserRole
 from app.schemas.auth import LoginRequest, SignupRequest
@@ -31,7 +32,7 @@ def signup(db: Session, payload: SignupRequest) -> tuple[str, User, Org]:
 
     if db.scalar(select(User).where(User.email == payload.email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
-    if db.scalar(select(Org).where(Org.slug == payload.workspace_slug)):
+    if payload.workspace_slug == DEMO_ORG_SLUG or db.scalar(select(Org).where(Org.slug == payload.workspace_slug)):
         raise HTTPException(status.HTTP_409_CONFLICT, "That workspace slug is already taken")
 
     org = Org(name=payload.org_name, slug=payload.workspace_slug, team_size=payload.team_size)
@@ -72,4 +73,24 @@ def login(db: Session, payload: LoginRequest) -> tuple[str, User, Org]:
     org = db.get(Org, user.org_id)
     assert org is not None, "user.org_id is a non-nullable FK — the org must exist"
     token = create_access_token(subject=str(user.id))
+    return token, user, org
+
+
+def demo_login(db: Session) -> tuple[str, User, Org]:
+    """Signs in as the shared read-only demo user, creating it (with sample
+    data) on first use so the demo works before the first nightly refresh."""
+    from app.services import demo_service
+    from app.services.sample_data import seed_sample_data
+
+    if not settings.demo_enabled:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The demo isn't available on this server")
+    try:
+        user, org, created = demo_service.ensure_demo_account(db)
+    except demo_service.DemoUnavailableError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The demo isn't available on this server") from exc
+    if created:
+        seed_sample_data(db, org.id, days_back=DEMO_DATA_DAYS)
+        db.commit()
+    # Short-lived: a shared account shouldn't hand out month-long tokens.
+    token = create_access_token(subject=str(user.id), expires_minutes=120)
     return token, user, org

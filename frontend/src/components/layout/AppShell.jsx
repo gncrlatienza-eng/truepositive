@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { theme } from "../../styles/theme";
+import { useAuth } from "../../context/AuthContext";
 import { getCriticalPanel } from "../../api/dashboard";
 import { ErrorBoundary } from "../common/ErrorBoundary";
 import ScopeSwitcher from "../ScopeSwitcher/ScopeSwitcher";
@@ -36,6 +37,7 @@ export default function AppShell() {
       .catch(() => {});
   }, []);
 
+  const { user } = useAuth();
   const railW = collapsed ? RAIL_WIDTH_COLLAPSED : RAIL_WIDTH_EXPANDED;
 
   return (
@@ -59,6 +61,25 @@ export default function AppShell() {
           transition: "margin-left 150ms ease-out",
         }}
       >
+        {user?.is_demo && (
+          <div
+            role="status"
+            style={{
+              padding: "8px 16px",
+              fontSize: 13,
+              textAlign: "center",
+              background: theme.color.surface,
+              borderBottom: `1px solid ${theme.color.border}`,
+              color: theme.color.textMuted,
+            }}
+          >
+            You&apos;re viewing a read-only demo with sample data.{" "}
+            <a href="/onboarding" style={{ color: theme.color.accent }}>
+              Create your own workspace
+            </a>{" "}
+            to connect a real device.
+          </div>
+        )}
         <ErrorBoundary key={location.pathname}>
           <Outlet />
         </ErrorBoundary>

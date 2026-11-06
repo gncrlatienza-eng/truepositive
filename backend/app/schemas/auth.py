@@ -1,8 +1,9 @@
 import re
 import uuid
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
 
+from app.demo import DEMO_EMAIL
 from app.models.user import UserRole
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -61,6 +62,11 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     role: UserRole
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_demo(self) -> bool:
+        return self.email == DEMO_EMAIL
 
 
 class OrgOut(BaseModel):

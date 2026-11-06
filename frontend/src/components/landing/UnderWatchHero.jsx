@@ -3,7 +3,7 @@ import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import landTopology from "world-atlas/land-110m.json";
 import { theme } from "../../styles/theme";
-import { PrimaryLink } from "../auth/fields";
+import { OutlineLink, PrimaryLink } from "../auth/fields";
 
 // "Under Watch" hero — rebuilt in real React from a Claude Design canvas
 // concept (reference/"Under Watch.dc (1).html"), not ported verbatim: that
@@ -644,6 +644,9 @@ function HeroCopyBlock() {
         <PrimaryLink to="/onboarding" style={{ width: "auto", padding: "14px 28px", fontSize: 15 }}>
           Create your workspace
         </PrimaryLink>
+        <OutlineLink to="/demo" style={{ width: "auto", padding: "14px 28px", fontSize: 15 }}>
+          Try the live demo
+        </OutlineLink>
         <a
           href="#how-it-works"
           className="tp-link-hover-underline"

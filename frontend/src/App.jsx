@@ -6,6 +6,7 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import GuestRoute from "./components/auth/GuestRoute";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
+import DemoPage from "./pages/DemoPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import SettingsPage from "./pages/SettingsPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -31,6 +32,7 @@ export default function App() {
                 </GuestRoute>
               }
             />
+            <Route path="/demo" element={<DemoPage />} />
             {/* Not GuestRoute: step 1 signs the user in immediately (see AuthContext.signup),
                 so steps 2-3 must stay reachable while authenticated, unlike /login. */}
             <Route path="/onboarding" element={<OnboardingPage />} />

@@ -13,6 +13,7 @@ from app.config import settings
 from app.database.session import engine
 from app.routes import agents, alerts, auth, dashboard, incidents, intel, logs, playbooks, reports
 from app.routes import settings as settings_route
+from app.services.demo_service import refresh_demo_data
 from app.services.log_retention import run_log_retention
 from app.services.report_scheduler import run_scheduled_reports
 
@@ -56,6 +57,10 @@ async def lifespan(_app: FastAPI):
     )
     # Minute 45 keeps it clear of the 00:15 report runs, which read logs.
     scheduler.add_job(run_log_retention, CronTrigger(minute=45), id="log_retention", **_JOB_DEFAULTS)
+    # No-op unless DEMO_ENABLED. Also runs once right after startup so a
+    # redeploy doesn't leave the demo on stale (or retention-purged) data.
+    scheduler.add_job(refresh_demo_data, CronTrigger(hour=0, minute=30), id="demo_refresh", **_JOB_DEFAULTS)
+    scheduler.add_job(refresh_demo_data, id="demo_refresh_startup")
     scheduler.start()
     try:
         yield

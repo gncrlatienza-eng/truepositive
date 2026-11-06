@@ -6,7 +6,7 @@
 [![Agent release](https://img.shields.io/github/v/release/gncrlatienza-eng/truepositive?label=agent)](https://github.com/gncrlatienza-eng/truepositive/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Live:** [truepositive-alpha.vercel.app](https://truepositive-alpha.vercel.app)
+**[Try the live demo](https://truepositive-alpha.vercel.app/demo)** (a read-only workspace with sample data, no signup) · [truepositive-alpha.vercel.app](https://truepositive-alpha.vercel.app)
 
 ![TruePositive dashboard](frontend/public/marketing/hero-dashboard.png)
 

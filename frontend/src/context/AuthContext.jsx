@@ -68,6 +68,14 @@ export function AuthProvider({ children }) {
     return data;
   }
 
+  // The shared read-only demo workspace. Session storage only: closing the
+  // tab ends it, so a visitor's own login later isn't shadowed by the demo.
+  async function demoLogin() {
+    const { data } = await api.post("/auth/demo");
+    applySession(data, false);
+    return data;
+  }
+
   function logout() {
     clearSession();
     // Per-user browsing history that shouldn't carry over to the next person
@@ -86,6 +94,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: !!user,
     signup,
     login,
+    demoLogin,
     logout,
   };
 
